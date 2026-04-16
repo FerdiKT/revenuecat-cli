@@ -72,7 +72,53 @@ func TestAppsResolveByBundleID(t *testing.T) {
 }
 
 func TestMetricsCountriesOutputsTable(t *testing.T) {
-	server := newRevenueCatFixtureServer()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/projects/proj_123/charts/revenue/options":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"object": "chart_options",
+				"segments": []any{
+					map[string]any{"id": "country", "display_name": "Country"},
+				},
+				"filters": []any{
+					map[string]any{"id": "app_id", "display_name": "App"},
+					map[string]any{"id": "store", "display_name": "Store"},
+					map[string]any{"id": "apple_claim_type", "display_name": "Apple Claim Type"},
+				},
+			})
+		case "/v2/projects/proj_123/charts/revenue":
+			if got := r.URL.Query().Get("aggregate"); got != "total" {
+				t.Fatalf("aggregate = %q, want total", got)
+			}
+			if got := r.URL.Query().Get("segment"); got != "country" {
+				t.Fatalf("segment = %q, want country", got)
+			}
+			if got := r.URL.Query().Get("filters"); got != `[{"name":"app_id","values":["app_1"]},{"name":"store","values":["app_store"]},{"name":"apple_claim_type","values":["Organic"]}]` {
+				t.Fatalf("filters = %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"chart_name": "revenue",
+				"segments": []any{
+					map[string]any{"id": "US", "display_name": "United States"},
+					map[string]any{"id": "TR", "display_name": "Turkey"},
+					map[string]any{"id": "OTHER", "display_name": "Other"},
+				},
+				"measures": []any{
+					map[string]any{"id": "revenue"},
+					map[string]any{"id": "transactions"},
+				},
+				"summary": map[string]any{
+					"total": []any{
+						map[string]any{"revenue": 1234.5, "transactions": 18},
+						map[string]any{"revenue": 87, "transactions": 4},
+						map[string]any{"revenue": 11, "transactions": 1},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
 	defer server.Close()
 
 	tempConfig := t.TempDir()
@@ -100,6 +146,49 @@ func TestMetricsCountriesOutputsTable(t *testing.T) {
 	}
 	if strings.Contains(stdout, "Other") {
 		t.Fatalf("stdout should exclude Other by default: %s", stdout)
+	}
+}
+
+func TestMetricsCountriesRejectsUnsupportedAppFilter(t *testing.T) {
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/charts/customers_active/options" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "chart_options",
+			"segments": []any{
+				map[string]any{"id": "country", "display_name": "Country"},
+			},
+			"filters": []any{
+				map[string]any{"id": "apple_claim_type", "display_name": "Apple Claim Type"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	writeTestConfig(t, tempConfig, server.URL)
+
+	cmd, _ := newRootCommand()
+	_, _, err := executeCommand(t, cmd, []string{
+		"metrics", "countries", "customers-active",
+		"--context", "prod",
+		"--app", "app_1",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var cliErr *CLIError
+	if !errorAsCLI(err, &cliErr) {
+		t.Fatalf("err = %T, want *CLIError", err)
+	}
+	if cliErr.Code != 2 {
+		t.Fatalf("cliErr.Code = %d, want 2", cliErr.Code)
+	}
+	if !strings.Contains(cliErr.Message, "does not support --app") {
+		t.Fatalf("message = %q", cliErr.Message)
 	}
 }
 

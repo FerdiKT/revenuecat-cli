@@ -692,6 +692,16 @@ type countriesFlags struct {
 	organicOnly    bool
 }
 
+type chartOptionSupport struct {
+	Segments map[string]struct{}
+	Filters  map[string]struct{}
+}
+
+type segmentInfo struct {
+	ID          string
+	DisplayName string
+}
+
 func newMetricsCountriesCommand(app *App) *cobra.Command {
 	var queryFlags requestFlags
 	var flags countriesFlags
@@ -721,15 +731,29 @@ func newMetricsCountriesCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			query, err := buildCountriesQuery(baseQuery, flags)
-			if err != nil {
-				return err
-			}
 
 			rows := make([]map[string]string, 0)
 			requestIDs := make([]string, 0)
 			for _, ctx := range contexts {
 				projectID, err := app.ensureProjectID(ctx)
+				if err != nil {
+					return err
+				}
+				support, optionsRequestID, err := loadChartOptionSupport(context.Background(), app.clientFor(ctx), projectID, chartName)
+				if err != nil {
+					var apiErr *rcapi.APIError
+					if errorAs(err, &apiErr) {
+						return app.mapAPIError(&ctx, apiErr, "")
+					}
+					return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+				}
+				if optionsRequestID != "" {
+					requestIDs = append(requestIDs, optionsRequestID)
+				}
+				if err := validateCountriesSupport(chartName, ctx.Alias, support, flags); err != nil {
+					return err
+				}
+				query, err := buildCountriesQuery(baseQuery, flags)
 				if err != nil {
 					return err
 				}
@@ -747,6 +771,9 @@ func newMetricsCountriesCommand(app *App) *cobra.Command {
 					return &CLIError{Code: exitcode.Internal, Message: err.Error()}
 				}
 				requestIDs = append(requestIDs, result.RequestID)
+				if err := validateUnsupportedChartParams(chartName, ctx.Alias, result.Payload, flags); err != nil {
+					return err
+				}
 
 				contextRows, err := extractCountryRows(result.Payload, chartName)
 				if err != nil {
@@ -1086,6 +1113,7 @@ func annotateItems(ctx config.Context, projectID string, items []any) []any {
 
 func buildCountriesQuery(baseQuery url.Values, flags countriesFlags) (url.Values, error) {
 	query := cloneValues(baseQuery)
+	query.Set("aggregate", "total")
 	query.Set("segment", "country")
 	if strings.TrimSpace(flags.startDate) != "" {
 		query.Set("start_date", strings.TrimSpace(flags.startDate))
@@ -1142,33 +1170,40 @@ func extractCountryRows(payload any, chartName string) ([]map[string]string, err
 		return nil, fmt.Errorf("unexpected %s chart payload", chartName)
 	}
 
-	segmentNames := map[string]string{}
-	if segments, ok := root["segments"].([]any); ok {
-		for _, item := range segments {
-			object, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			id, _ := object["id"].(string)
-			displayName, _ := object["display_name"].(string)
-			if id != "" {
-				segmentNames[id] = chooseNonEmpty(displayName, id)
-			}
-		}
-	}
+	segments, segmentNames := extractSegmentInfo(root["segments"])
 
 	measures := measureIDs(root["measures"])
+	if rows := rowsFromSummaryTotal(root["summary"], segments, segmentNames, measures); len(rows) > 0 {
+		return rows, nil
+	}
 	if rows := rowsFromSummary(root["summary"], segmentNames, measures); len(rows) > 0 {
 		return rows, nil
 	}
-	if rows := rowsFromValueObjects(root["values"], segmentNames, measures); len(rows) > 0 {
-		return rows, nil
+
+	return nil, fmt.Errorf("could not extract segmented country rows from %s chart summary", chartName)
+}
+
+func rowsFromSummaryTotal(summary any, segments []segmentInfo, segmentNames map[string]string, measures []string) []map[string]string {
+	object, ok := summary.(map[string]any)
+	if !ok {
+		return nil
 	}
-	if rows := rowsFromValueMatrix(root["values"], segmentNames); len(rows) > 0 {
-		return rows, nil
+	total, ok := object["total"]
+	if !ok {
+		return nil
 	}
 
-	return nil, fmt.Errorf("could not extract segmented country rows from %s chart response", chartName)
+	switch current := total.(type) {
+	case []any:
+		return rowsFromSummaryTotalArray(current, segments, measures)
+	case map[string]any:
+		if rows := rowsFromMeasureArrays(current, segments, measures); len(rows) > 0 {
+			return rows
+		}
+		return rowsFromSummary(current, segmentNames, measures)
+	default:
+		return nil
+	}
 }
 
 func rowsFromSummary(summary any, segmentNames map[string]string, measures []string) []map[string]string {
@@ -1247,20 +1282,27 @@ func rowsFromSummary(summary any, segmentNames map[string]string, measures []str
 	}
 }
 
-func rowsFromValueObjects(values any, segmentNames map[string]string, measures []string) []map[string]string {
-	items, ok := values.([]any)
-	if !ok {
+func rowsFromSummaryTotalArray(total []any, segments []segmentInfo, measures []string) []map[string]string {
+	if len(total) == 0 || len(total) != len(segments) {
 		return nil
 	}
 
-	rows := make([]map[string]string, 0, len(items))
-	for _, item := range items {
-		object, ok := item.(map[string]any)
-		if !ok {
-			continue
+	rows := make([]map[string]string, 0, len(total))
+	for index, item := range total {
+		row := map[string]string{"country": segments[index].DisplayName}
+		switch current := item.(type) {
+		case map[string]any:
+			scalars := scalarMeasureFields(current, measures)
+			delete(scalars, "country")
+			delete(scalars, "id")
+			delete(scalars, "display_name")
+			for key, value := range scalars {
+				row[key] = formatMetric(value)
+			}
+		default:
+			row[firstMeasureOrValue(measures)] = formatMetric(current)
 		}
-		row := rowFromMetricObject(object, segmentNames, measures)
-		if len(row) == 0 {
+		if len(row) == 1 {
 			continue
 		}
 		rows = append(rows, row)
@@ -1268,57 +1310,55 @@ func rowsFromValueObjects(values any, segmentNames map[string]string, measures [
 	return rows
 }
 
-func rowsFromValueMatrix(values any, segmentNames map[string]string) []map[string]string {
-	items, ok := values.([]any)
-	if !ok || len(items) == 0 || len(segmentNames) == 0 {
+func rowsFromMeasureArrays(total map[string]any, segments []segmentInfo, measures []string) []map[string]string {
+	if len(segments) == 0 || len(total) == 0 {
 		return nil
 	}
-
-	segmentOrder := orderedSegments(segmentNames)
-	totals := make([]float64, len(segmentOrder))
-	seen := false
-	for _, item := range items {
-		series, ok := item.([]any)
-		if !ok || len(series) != len(segmentOrder) {
+	rows := make([]map[string]string, len(segments))
+	for index, segment := range segments {
+		rows[index] = map[string]string{"country": segment.DisplayName}
+	}
+	seenMeasure := false
+	for key, value := range total {
+		if len(measures) > 0 && !stringInSlice(key, measures) {
+			continue
+		}
+		items, ok := value.([]any)
+		if !ok || len(items) != len(segments) {
 			return nil
 		}
-		for index, current := range series {
-			number, ok := toFloat(current)
-			if !ok {
-				return nil
-			}
-			totals[index] += number
-			seen = true
+		for index, item := range items {
+			rows[index][key] = formatMetric(item)
 		}
+		seenMeasure = true
 	}
-	if !seen {
+	if !seenMeasure {
 		return nil
-	}
-
-	rows := make([]map[string]string, 0, len(segmentOrder))
-	for index, segmentID := range segmentOrder {
-		rows = append(rows, map[string]string{
-			"country": chooseNonEmpty(segmentNames[segmentID], segmentID),
-			"value":   formatMetric(totals[index]),
-		})
 	}
 	return rows
 }
 
-func orderedSegments(segmentNames map[string]string) []string {
-	order := make([]string, 0, len(segmentNames))
-	for segmentID := range segmentNames {
-		order = append(order, segmentID)
+func extractSegmentInfo(raw any) ([]segmentInfo, map[string]string) {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil, map[string]string{}
 	}
-	// Preserve deterministic output.
-	for i := 0; i < len(order)-1; i++ {
-		for j := i + 1; j < len(order); j++ {
-			if segmentNames[order[i]] > segmentNames[order[j]] {
-				order[i], order[j] = order[j], order[i]
-			}
+	segments := make([]segmentInfo, 0, len(items))
+	names := make(map[string]string, len(items))
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
 		}
+		id := firstString(object["id"], object["name"])
+		if id == "" {
+			continue
+		}
+		displayName := chooseNonEmpty(firstString(object["display_name"]), id)
+		segments = append(segments, segmentInfo{ID: id, DisplayName: displayName})
+		names[id] = displayName
 	}
-	return order
+	return segments, names
 }
 
 func rowFromMetricObject(object map[string]any, segmentNames map[string]string, measures []string) map[string]string {
@@ -1383,6 +1423,113 @@ func measureIDs(raw any) []string {
 		measures = append(measures, id)
 	}
 	return measures
+}
+
+func loadChartOptionSupport(ctx context.Context, client *rcapi.Client, projectID, chartName string) (chartOptionSupport, string, error) {
+	result, err := client.Do(ctx, rcapi.Request{
+		Method:    http.MethodGet,
+		Path:      fmt.Sprintf("projects/%s/charts/%s/options", projectID, chartName),
+		RetryMode: rcapi.RetryDefault,
+	})
+	if err != nil {
+		return chartOptionSupport{}, "", err
+	}
+	root, ok := result.Payload.(map[string]any)
+	if !ok {
+		return chartOptionSupport{}, result.RequestID, fmt.Errorf("unexpected chart options payload for %s", chartName)
+	}
+	return chartOptionSupport{
+		Segments: collectOptionIDs(root["segments"]),
+		Filters:  collectOptionIDs(root["filters"]),
+	}, result.RequestID, nil
+}
+
+func collectOptionIDs(raw any) map[string]struct{} {
+	items, ok := raw.([]any)
+	if !ok {
+		return map[string]struct{}{}
+	}
+	result := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := firstString(object["id"], object["name"])
+		if id == "" {
+			continue
+		}
+		result[id] = struct{}{}
+	}
+	return result
+}
+
+func validateCountriesSupport(chartName, contextAlias string, support chartOptionSupport, flags countriesFlags) error {
+	if len(support.Segments) > 0 {
+		if _, ok := support.Segments["country"]; !ok {
+			return &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("chart %q in context %q does not support country segmentation", chartName, contextAlias)}
+		}
+	}
+	for _, validation := range []struct {
+		flagName   string
+		filterName string
+		required   bool
+	}{
+		{flagName: "--app", filterName: "app_id", required: strings.TrimSpace(flags.appID) != ""},
+		{flagName: "--store", filterName: "store", required: strings.TrimSpace(flags.store) != ""},
+		{flagName: "--apple-claim-type", filterName: "apple_claim_type", required: strings.TrimSpace(flags.appleClaimType) != "" || flags.organicOnly},
+	} {
+		if !validation.required {
+			continue
+		}
+		if len(support.Filters) == 0 {
+			return &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("chart %q in context %q did not expose filter schema; cannot validate %s", chartName, contextAlias, validation.flagName)}
+		}
+		if _, ok := support.Filters[validation.filterName]; !ok {
+			return &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("chart %q in context %q does not support %s", chartName, contextAlias, validation.flagName)}
+		}
+	}
+	return nil
+}
+
+func validateUnsupportedChartParams(chartName, contextAlias string, payload any, flags countriesFlags) error {
+	root, ok := payload.(map[string]any)
+	if !ok {
+		return nil
+	}
+	unsupported, ok := root["unsupported_params"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	filterList, ok := unsupported["filters"].([]any)
+	if !ok || len(filterList) == 0 {
+		return nil
+	}
+	unsupportedFilters := make(map[string]struct{}, len(filterList))
+	for _, item := range filterList {
+		name, ok := item.(string)
+		if !ok || name == "" {
+			continue
+		}
+		unsupportedFilters[name] = struct{}{}
+	}
+	for _, validation := range []struct {
+		flagName   string
+		filterName string
+		required   bool
+	}{
+		{flagName: "--app", filterName: "app_id", required: strings.TrimSpace(flags.appID) != ""},
+		{flagName: "--store", filterName: "store", required: strings.TrimSpace(flags.store) != ""},
+		{flagName: "--apple-claim-type", filterName: "apple_claim_type", required: strings.TrimSpace(flags.appleClaimType) != "" || flags.organicOnly},
+	} {
+		if !validation.required {
+			continue
+		}
+		if _, ok := unsupportedFilters[validation.filterName]; ok {
+			return &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("chart %q in context %q rejected %s", chartName, contextAlias, validation.flagName)}
+		}
+	}
+	return nil
 }
 
 func upsertFilter(filters []any, name string, values []string) []any {
@@ -1457,6 +1604,15 @@ func orderedCountryHeaders(rows []map[string]string) []string {
 		}
 	}
 	return headers
+}
+
+func stringInSlice(needle string, haystack []string) bool {
+	for _, item := range haystack {
+		if item == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func firstMeasureOrValue(measures []string) string {
