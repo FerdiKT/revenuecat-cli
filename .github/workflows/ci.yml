@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.1"
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build binary
+        run: make build VERSION=ci
+
+      - name: Verify local install flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$(mktemp -d)"
+          make install-local PREFIX="$prefix" VERSION=ci
+          "$prefix/bin/revenuecat" version

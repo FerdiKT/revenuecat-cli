@@ -73,6 +73,18 @@ make build VERSION=v0.1.0
 
 </details>
 
+<details>
+<summary><strong>Option 4 — Local install for testing</strong></summary>
+
+```bash
+git clone https://github.com/FerdiKT/revenuecat-cli.git
+cd revenuecat-cli
+make install-local PREFIX="$(pwd)/.local-dev" VERSION=local
+./.local-dev/bin/revenuecat version
+```
+
+</details>
+
 ---
 
 ## 🚀 Quickstart
@@ -218,6 +230,7 @@ V1 uses **project-scoped RevenueCat API keys** organized into named contexts.
 ```bash
 make test
 make build VERSION=v0.1.0
+make install-local PREFIX="$(pwd)/.local-dev" VERSION=local
 make dist VERSION=v0.1.0
 ```
 

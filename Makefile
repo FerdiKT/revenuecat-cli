@@ -4,9 +4,11 @@ VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 DIST_DIR ?= dist
+PREFIX ?= $(HOME)/.local
+BIN_DIR ?= $(PREFIX)/bin
 LDFLAGS = -X github.com/FerdiKT/revenuecat-cli/internal/buildinfo.Version=$(VERSION) -X github.com/FerdiKT/revenuecat-cli/internal/buildinfo.Commit=$(COMMIT) -X github.com/FerdiKT/revenuecat-cli/internal/buildinfo.Date=$(DATE)
 
-.PHONY: build run tidy test dist clean
+.PHONY: build run tidy test dist install-local uninstall-local clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY_NAME) $(CMD_PATH)
@@ -19,6 +21,13 @@ tidy:
 
 test:
 	go test ./...
+
+install-local:
+	mkdir -p $(BIN_DIR)
+	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME) $(CMD_PATH)
+
+uninstall-local:
+	rm -f $(BIN_DIR)/$(BINARY_NAME)
 
 dist: clean
 	mkdir -p $(DIST_DIR)

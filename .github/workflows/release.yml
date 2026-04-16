@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.1"
+
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build release artifacts
+        run: make dist VERSION="${{ steps.meta.outputs.version }}"
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: |
+            dist/checksums.txt
+            dist/*.tar.gz
+          body: |
+            Automated release for ${{ github.ref_name }}.
+
+            Highlights:
+            - agent-first RevenueCat CLI
+            - named API key contexts for multi-project workflows
+            - JSON-first metrics, resource, and snapshot commands
+            - Homebrew tap formula update in the follow-up job
+
+  update-homebrew-tap:
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: FerdiKT/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.release.outputs.version }}"
+          darwin_amd64="$(awk '/revenuecat_'"$version"'_darwin_amd64.tar.gz/{print $1}' dist/checksums.txt)"
+          darwin_arm64="$(awk '/revenuecat_'"$version"'_darwin_arm64.tar.gz/{print $1}' dist/checksums.txt)"
+          linux_amd64="$(awk '/revenuecat_'"$version"'_linux_amd64.tar.gz/{print $1}' dist/checksums.txt)"
+          linux_arm64="$(awk '/revenuecat_'"$version"'_linux_arm64.tar.gz/{print $1}' dist/checksums.txt)"
+          cat > tap/Formula/revenuecat.rb <<EOF
+          class Revenuecat < Formula
+            desc "Agent-first CLI for RevenueCat"
+            homepage "https://github.com/FerdiKT/revenuecat-cli"
+            version "$version"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/FerdiKT/revenuecat-cli/releases/download/v#{version}/revenuecat_#{version}_darwin_arm64.tar.gz"
+                sha256 "$darwin_arm64"
+              else
+                url "https://github.com/FerdiKT/revenuecat-cli/releases/download/v#{version}/revenuecat_#{version}_darwin_amd64.tar.gz"
+                sha256 "$darwin_amd64"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/FerdiKT/revenuecat-cli/releases/download/v#{version}/revenuecat_#{version}_linux_arm64.tar.gz"
+                sha256 "$linux_arm64"
+              else
+                url "https://github.com/FerdiKT/revenuecat-cli/releases/download/v#{version}/revenuecat_#{version}_linux_amd64.tar.gz"
+                sha256 "$linux_amd64"
+              end
+            end
+
+            def install
+              bin.install "revenuecat"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/revenuecat version")
+            end
+          end
+          EOF
+
+      - name: Commit and push formula update
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/revenuecat.rb
+          git commit -m "Update revenuecat formula to v${{ needs.release.outputs.version }}"
+          git push origin HEAD:main
