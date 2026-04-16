@@ -212,6 +212,18 @@ Use this pattern for Codex, Claude, Cursor, or internal agents:
 
 Repo-local guidance also lives in [`AGENTS.md`](AGENTS.md) and [`skills/revenuecat-cli/SKILL.md`](skills/revenuecat-cli/SKILL.md).
 
+To install the bundled Codex skill directly from the CLI:
+
+```bash
+revenuecat agent install-skill
+```
+
+For local development, if you want a symlink instead of a copied install:
+
+```bash
+revenuecat agent link-skill --source ./skills/revenuecat-cli
+```
+
 ---
 
 ## 🔐 Auth Model

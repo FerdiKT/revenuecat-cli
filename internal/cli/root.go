@@ -66,6 +66,7 @@ func newRootCommand() (*cobra.Command, *App) {
 
 	addContextCommands(cmd, app)
 	addAuthCommands(cmd, app)
+	addAgentCommands(cmd)
 	addResourceCommands(cmd, app)
 	addVersionCommand(cmd)
 
