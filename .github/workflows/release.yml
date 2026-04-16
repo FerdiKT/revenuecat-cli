@@ -62,7 +62,6 @@ jobs:
   update-homebrew-tap:
     runs-on: ubuntu-latest
     needs: release
-    if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
     steps:
       - name: Download dist artifact
         uses: actions/download-artifact@v4
