@@ -28,7 +28,10 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 - Start with `revenuecat pull project` for a single project snapshot.
 - Use `revenuecat pull all` to compare every configured project.
 - Use `revenuecat <resource> list` or `get` for narrower reads.
-- Use `revenuecat metrics overview` or `revenuecat metrics chart <name>` for KPI and chart data.
+- Use `revenuecat apps resolve --bundle-id ...` when you need an app id for metrics filters.
+- Use `revenuecat metrics countries <name>` for country breakdown tables.
+- Use `revenuecat metrics chart <name>` for raw chart payloads, and prefer `--filters-json` / `--selectors-json` for complex queries.
+- Use `revenuecat metrics overview` for quick KPI reads.
 
 ## Mutation Pattern
 

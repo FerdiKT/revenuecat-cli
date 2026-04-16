@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +26,8 @@ type requestFlags struct {
 	dataFile      string
 	expand        []string
 	params        []string
+	filtersJSON   string
+	selectorsJSON string
 	limit         int
 	startingAfter string
 }
@@ -194,7 +198,33 @@ func parseQuery(flags requestFlags) (url.Values, error) {
 		}
 		query.Add(strings.TrimSpace(key), strings.TrimSpace(value))
 	}
+	if flags.filtersJSON != "" {
+		compact, err := compactJSON(flags.filtersJSON)
+		if err != nil {
+			return nil, &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("invalid --filters-json: %v", err)}
+		}
+		query.Set("filters", compact)
+	}
+	if flags.selectorsJSON != "" {
+		compact, err := compactJSON(flags.selectorsJSON)
+		if err != nil {
+			return nil, &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("invalid --selectors-json: %v", err)}
+		}
+		query.Set("selectors", compact)
+	}
 	return query, nil
+}
+
+func compactJSON(raw string) (string, error) {
+	var decoded any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(decoded)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func (a *App) runReadAcrossContexts(contexts []config.Context, request func(config.Context) (*rcapi.Result, error)) error {
@@ -270,6 +300,12 @@ func addReadFlags(cmd *cobra.Command, flags *requestFlags) {
 	cmd.Flags().StringSliceVar(&flags.params, "param", nil, "Additional query parameter in key=value form")
 	cmd.Flags().IntVar(&flags.limit, "limit", 100, "Maximum number of items to fetch")
 	cmd.Flags().StringVar(&flags.startingAfter, "starting-after", "", "Pagination cursor")
+}
+
+func addMetricsQueryFlags(cmd *cobra.Command, flags *requestFlags) {
+	cmd.Flags().StringSliceVar(&flags.params, "param", nil, "Additional query parameter in key=value form")
+	cmd.Flags().StringVar(&flags.filtersJSON, "filters-json", "", "Raw JSON array for the charts filters query parameter")
+	cmd.Flags().StringVar(&flags.selectorsJSON, "selectors-json", "", "Raw JSON object for the charts selectors query parameter")
 }
 
 func addCommonIDFlag(cmd *cobra.Command, name, usage string) *string {
@@ -417,6 +453,70 @@ func projectNameFromPayload(payload map[string]any) string {
 		return value
 	}
 	return ""
+}
+
+func normalizeChartName(name string) string {
+	return strings.ReplaceAll(strings.TrimSpace(name), "-", "_")
+}
+
+func printCSV(headers []string, rows []map[string]string) error {
+	writer := csv.NewWriter(os.Stdout)
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		record := make([]string, 0, len(headers))
+		for _, header := range headers {
+			record = append(record, row[header])
+		}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+	writer.Flush()
+	return writer.Error()
+}
+
+func marshalJSONString(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return string(data)
+}
+
+func parseJSONObject(raw string) (map[string]any, error) {
+	if raw == "" {
+		return map[string]any{}, nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func parseJSONArray(raw string) ([]any, error) {
+	if raw == "" {
+		return []any{}, nil
+	}
+	var decoded []any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func encodedJSON(value any) (string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, data); err != nil {
+		return "", err
+	}
+	return compact.String(), nil
 }
 
 func classifyAPIError(apiErr *rcapi.APIError) error {

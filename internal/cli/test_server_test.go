@@ -10,7 +10,13 @@ func newRevenueCatFixtureServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v2/projects/proj_123/apps":
-			_ = json.NewEncoder(w).Encode(listResponse([]map[string]any{{"id": "app_1", "name": "iOS App"}}))
+			_ = json.NewEncoder(w).Encode(listResponse([]map[string]any{{
+				"id":   "app_1",
+				"name": "iOS App",
+				"app_store": map[string]any{
+					"bundle_id": "app.ferdi.headson",
+				},
+			}}))
 		case "/v2/projects/proj_123/entitlements":
 			_ = json.NewEncoder(w).Encode(listResponse([]map[string]any{{"id": "ent_1", "lookup_key": "pro"}}))
 		case "/v2/projects/proj_123/products":
@@ -23,6 +29,24 @@ func newRevenueCatFixtureServer() *httptest.Server {
 			_ = json.NewEncoder(w).Encode(map[string]any{"revenue": 1000, "trials": 12})
 		case "/v2/projects/proj_123/charts/trials":
 			_ = json.NewEncoder(w).Encode(map[string]any{"chart_name": "trials", "values": []any{map[string]any{"value": 12}}})
+		case "/v2/projects/proj_123/charts/revenue":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"chart_name": "revenue",
+				"segments": []any{
+					map[string]any{"id": "US", "display_name": "United States"},
+					map[string]any{"id": "TR", "display_name": "Turkey"},
+					map[string]any{"id": "OTHER", "display_name": "Other"},
+				},
+				"measures": []any{
+					map[string]any{"id": "revenue"},
+					map[string]any{"id": "transactions"},
+				},
+				"summary": map[string]any{
+					"US":    map[string]any{"revenue": 1234.5, "transactions": 18},
+					"TR":    map[string]any{"revenue": 87, "transactions": 4},
+					"OTHER": map[string]any{"revenue": 11, "transactions": 1},
+				},
+			})
 		case "/v2/projects/proj_123/customers":
 			_ = json.NewEncoder(w).Encode(listResponse([]map[string]any{{"id": "cust_1", "app_user_id": "user-1"}}))
 		case "/v2/projects/proj_123/customers/cust_1/subscriptions":

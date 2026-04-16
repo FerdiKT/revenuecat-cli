@@ -21,7 +21,10 @@ This repository contains an agent-first CLI for RevenueCat v2.
 - For project discovery inside a known context: `revenuecat pull project`
 - For estate-wide comparison: `revenuecat pull all`
 - For focused reads: `revenuecat <resource> list|get`
-- For metrics: `revenuecat metrics overview|chart|options`
+- Resolve app ids with `revenuecat apps resolve --bundle-id ...` before app-scoped metrics queries.
+- For country tables: `revenuecat metrics countries <chart_name> --app <app_id> ...`
+- For raw chart payloads: `revenuecat metrics chart <chart_name> --filters-json ... --selectors-json ...`
+- For quick KPI reads: `revenuecat metrics overview|options`
 
 ## Mutation Rules
 

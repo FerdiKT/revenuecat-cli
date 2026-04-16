@@ -3,9 +3,11 @@ package cli
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,21 +42,24 @@ type pathScope struct {
 }
 
 func addResourceCommands(root *cobra.Command, app *App) {
+	appsCmd := newStandardResourceCommand(app, resourceDefinition{
+		Plural:   "apps",
+		Singular: "app",
+		ListPath: func(projectID string, _ pathScope) string { return fmt.Sprintf("projects/%s/apps", projectID) },
+		GetPath: func(projectID, id string, _ pathScope) string {
+			return fmt.Sprintf("projects/%s/apps/%s", projectID, id)
+		},
+		CreatePath: func(projectID string, _ pathScope) string {
+			return fmt.Sprintf("projects/%s/apps", projectID)
+		},
+		UpdatePath: func(projectID, id string, _ pathScope) string {
+			return fmt.Sprintf("projects/%s/apps/%s", projectID, id)
+		},
+	})
+	appsCmd.AddCommand(newAppsResolveCommand(app))
+
 	root.AddCommand(
-		newStandardResourceCommand(app, resourceDefinition{
-			Plural:   "apps",
-			Singular: "app",
-			ListPath: func(projectID string, _ pathScope) string { return fmt.Sprintf("projects/%s/apps", projectID) },
-			GetPath: func(projectID, id string, _ pathScope) string {
-				return fmt.Sprintf("projects/%s/apps/%s", projectID, id)
-			},
-			CreatePath: func(projectID string, _ pathScope) string {
-				return fmt.Sprintf("projects/%s/apps", projectID)
-			},
-			UpdatePath: func(projectID, id string, _ pathScope) string {
-				return fmt.Sprintf("projects/%s/apps/%s", projectID, id)
-			},
-		}),
+		appsCmd,
 		newStandardResourceCommand(app, resourceDefinition{
 			Plural:   "entitlements",
 			Singular: "entitlement",
@@ -494,7 +499,7 @@ func newMetricsCommand(app *App) *cobra.Command {
 		Use:   "metrics",
 		Short: "Read RevenueCat metrics and charts",
 	}
-	cmd.AddCommand(newMetricsOverviewCommand(app), newMetricsChartCommand(app), newMetricsOptionsCommand(app))
+	cmd.AddCommand(newMetricsOverviewCommand(app), newMetricsChartCommand(app), newMetricsCountriesCommand(app), newMetricsOptionsCommand(app))
 	return cmd
 }
 
@@ -560,14 +565,14 @@ func newMetricsChartCommand(app *App) *cobra.Command {
 				}
 				return app.clientFor(ctx).Do(context.Background(), rcapi.Request{
 					Method:    http.MethodGet,
-					Path:      fmt.Sprintf("projects/%s/charts/%s", projectID, args[0]),
+					Path:      fmt.Sprintf("projects/%s/charts/%s", projectID, normalizeChartName(args[0])),
 					Query:     query,
 					RetryMode: app.requestRetryMode(http.MethodGet),
 				})
 			})
 		},
 	}
-	addReadFlags(cmd, &flags)
+	addMetricsQueryFlags(cmd, &flags)
 	return cmd
 }
 
@@ -592,12 +597,208 @@ func newMetricsOptionsCommand(app *App) *cobra.Command {
 				}
 				return app.clientFor(ctx).Do(context.Background(), rcapi.Request{
 					Method:    http.MethodGet,
-					Path:      fmt.Sprintf("projects/%s/charts/%s/options", projectID, args[0]),
+					Path:      fmt.Sprintf("projects/%s/charts/%s/options", projectID, normalizeChartName(args[0])),
 					RetryMode: app.requestRetryMode(http.MethodGet),
 				})
 			})
 		},
 	}
+	return cmd
+}
+
+func newAppsResolveCommand(app *App) *cobra.Command {
+	var bundleID string
+	cmd := &cobra.Command{
+		Use:   "resolve",
+		Short: "Resolve an app ID by bundle identifier",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(bundleID) == "" {
+				return &CLIError{Code: exitcode.Usage, Message: "--bundle-id is required"}
+			}
+
+			cfg, err := app.loadConfig()
+			if err != nil {
+				return err
+			}
+			contexts, err := app.resolveReadContexts(cfg)
+			if err != nil {
+				return err
+			}
+
+			matches := make([]map[string]any, 0)
+			requestIDs := make([]string, 0)
+			for _, ctx := range contexts {
+				projectID, err := app.ensureProjectID(ctx)
+				if err != nil {
+					return err
+				}
+				items, reqIDs, err := fetchAllListItems(context.Background(), app.clientFor(ctx), fmt.Sprintf("projects/%s/apps", projectID), url.Values{"limit": []string{"100"}})
+				if err != nil {
+					var apiErr *rcapi.APIError
+					if errorAs(err, &apiErr) {
+						return app.mapAPIError(&ctx, apiErr, "")
+					}
+					return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+				}
+				requestIDs = append(requestIDs, reqIDs...)
+				for _, item := range annotateItems(ctx, projectID, items) {
+					object, ok := item.(map[string]any)
+					if !ok || !appMatchesBundleID(object, bundleID) {
+						continue
+					}
+					matches = append(matches, object)
+				}
+			}
+
+			if len(matches) == 0 {
+				return &CLIError{Code: exitcode.NotFound, Message: fmt.Sprintf("no app found for bundle id %q", bundleID)}
+			}
+
+			if len(matches) == 1 && !app.globalFlags.JSON && !strings.EqualFold(app.globalFlags.Format, "json") && !shouldTable(app.globalFlags) {
+				_, err := fmt.Fprintln(os.Stdout, matches[0]["id"])
+				return err
+			}
+
+			if !app.globalFlags.JSON && !strings.EqualFold(app.globalFlags.Format, "json") {
+				return output.PrintTable(os.Stdout, toTableRows(any(matches)))
+			}
+
+			payload := map[string]any{
+				"bundle_id": bundleID,
+				"matches":   matches,
+			}
+			var summary *output.ContextSummary
+			if len(contexts) == 1 {
+				summary = app.outputContext(contexts[0])
+			}
+			return output.PrintJSON(os.Stdout, output.Success(summary, payload, output.Meta{
+				RequestID: strings.Join(requestIDs, ","),
+			}))
+		},
+	}
+	cmd.Flags().StringVar(&bundleID, "bundle-id", "", "Bundle identifier to resolve")
+	return cmd
+}
+
+type countriesFlags struct {
+	appID          string
+	startDate      string
+	endDate        string
+	top            int
+	includeOther   bool
+	csv            bool
+	store          string
+	appleClaimType string
+	organicOnly    bool
+}
+
+func newMetricsCountriesCommand(app *App) *cobra.Command {
+	var queryFlags requestFlags
+	var flags countriesFlags
+	cmd := &cobra.Command{
+		Use:   "countries <chart_name>",
+		Short: "Render a country breakdown table for a chart",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if flags.csv && app.globalFlags.JSON {
+				return &CLIError{Code: exitcode.Usage, Message: "use either --csv or --json, not both"}
+			}
+			if flags.organicOnly && strings.TrimSpace(flags.appleClaimType) != "" {
+				return &CLIError{Code: exitcode.Usage, Message: "use either --organic-only or --apple-claim-type"}
+			}
+
+			cfg, err := app.loadConfig()
+			if err != nil {
+				return err
+			}
+			contexts, err := app.resolveReadContexts(cfg)
+			if err != nil {
+				return err
+			}
+
+			chartName := normalizeChartName(args[0])
+			baseQuery, err := parseQuery(queryFlags)
+			if err != nil {
+				return err
+			}
+			query, err := buildCountriesQuery(baseQuery, flags)
+			if err != nil {
+				return err
+			}
+
+			rows := make([]map[string]string, 0)
+			requestIDs := make([]string, 0)
+			for _, ctx := range contexts {
+				projectID, err := app.ensureProjectID(ctx)
+				if err != nil {
+					return err
+				}
+				result, err := app.clientFor(ctx).Do(context.Background(), rcapi.Request{
+					Method:    http.MethodGet,
+					Path:      fmt.Sprintf("projects/%s/charts/%s", projectID, chartName),
+					Query:     query,
+					RetryMode: app.requestRetryMode(http.MethodGet),
+				})
+				if err != nil {
+					var apiErr *rcapi.APIError
+					if errorAs(err, &apiErr) {
+						return app.mapAPIError(&ctx, apiErr, "")
+					}
+					return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+				}
+				requestIDs = append(requestIDs, result.RequestID)
+
+				contextRows, err := extractCountryRows(result.Payload, chartName)
+				if err != nil {
+					return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+				}
+				for _, row := range contextRows {
+					if !flags.includeOther && strings.EqualFold(strings.TrimSpace(row["country"]), "other") {
+						continue
+					}
+					if len(contexts) > 1 {
+						row["context_alias"] = ctx.Alias
+						row["project_id"] = projectID
+					}
+					rows = append(rows, row)
+				}
+			}
+
+			if len(rows) == 0 {
+				return &CLIError{Code: exitcode.NotFound, Message: fmt.Sprintf("no country rows returned for chart %q", chartName)}
+			}
+
+			if flags.csv {
+				return printCSV(orderedCountryHeaders(rows), rows)
+			}
+
+			if app.globalFlags.JSON || strings.EqualFold(app.globalFlags.Format, "json") {
+				payload := map[string]any{
+					"chart_name": chartName,
+					"rows":       rows,
+				}
+				var summary *output.ContextSummary
+				if len(contexts) == 1 {
+					summary = app.outputContext(contexts[0])
+				}
+				return output.PrintJSON(os.Stdout, output.Success(summary, payload, output.Meta{
+					RequestID: strings.Join(requestIDs, ","),
+				}))
+			}
+
+			return output.PrintTable(os.Stdout, rows)
+		},
+	}
+	addMetricsQueryFlags(cmd, &queryFlags)
+	cmd.Flags().StringVar(&flags.appID, "app", "", "Filter to a specific RevenueCat app ID")
+	cmd.Flags().StringVar(&flags.startDate, "start", "", "Start date in YYYY-MM-DD format")
+	cmd.Flags().StringVar(&flags.endDate, "end", "", "End date in YYYY-MM-DD format")
+	cmd.Flags().IntVar(&flags.top, "top", 0, "Limit the country breakdown to the top N segments")
+	cmd.Flags().BoolVar(&flags.includeOther, "include-other", false, "Keep the aggregated Other row when segment limiting is used")
+	cmd.Flags().BoolVar(&flags.csv, "csv", false, "Print CSV instead of a table")
+	cmd.Flags().StringVar(&flags.store, "store", "", "Filter to a specific store, e.g. app_store")
+	cmd.Flags().StringVar(&flags.appleClaimType, "apple-claim-type", "", "Filter by Apple claim type, e.g. Organic")
+	cmd.Flags().BoolVar(&flags.organicOnly, "organic-only", false, "Shortcut for --apple-claim-type Organic")
 	return cmd
 }
 
@@ -881,4 +1082,466 @@ func annotateItems(ctx config.Context, projectID string, items []any) []any {
 		items[i] = object
 	}
 	return items
+}
+
+func buildCountriesQuery(baseQuery url.Values, flags countriesFlags) (url.Values, error) {
+	query := cloneValues(baseQuery)
+	query.Set("segment", "country")
+	if strings.TrimSpace(flags.startDate) != "" {
+		query.Set("start_date", strings.TrimSpace(flags.startDate))
+	}
+	if strings.TrimSpace(flags.endDate) != "" {
+		query.Set("end_date", strings.TrimSpace(flags.endDate))
+	}
+	if flags.top > 0 {
+		query.Set("limit_num_segments", strconv.Itoa(flags.top))
+	}
+
+	filters, err := parseJSONArray(query.Get("filters"))
+	if err != nil {
+		return nil, &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("invalid filters payload: %v", err)}
+	}
+	if strings.TrimSpace(flags.appID) != "" {
+		filters = upsertFilter(filters, "app_id", []string{strings.TrimSpace(flags.appID)})
+	}
+	if strings.TrimSpace(flags.store) != "" {
+		filters = upsertFilter(filters, "store", []string{strings.TrimSpace(flags.store)})
+	}
+	if flags.organicOnly {
+		filters = upsertFilter(filters, "apple_claim_type", []string{"Organic"})
+	}
+	if strings.TrimSpace(flags.appleClaimType) != "" {
+		filters = upsertFilter(filters, "apple_claim_type", []string{strings.TrimSpace(flags.appleClaimType)})
+	}
+	if len(filters) > 0 {
+		encoded, err := encodedJSON(filters)
+		if err != nil {
+			return nil, &CLIError{Code: exitcode.Internal, Message: fmt.Sprintf("encode filters: %v", err)}
+		}
+		query.Set("filters", encoded)
+	}
+
+	selectors, err := parseJSONObject(query.Get("selectors"))
+	if err != nil {
+		return nil, &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("invalid selectors payload: %v", err)}
+	}
+	if len(selectors) > 0 {
+		encoded, err := encodedJSON(selectors)
+		if err != nil {
+			return nil, &CLIError{Code: exitcode.Internal, Message: fmt.Sprintf("encode selectors: %v", err)}
+		}
+		query.Set("selectors", encoded)
+	}
+
+	return query, nil
+}
+
+func extractCountryRows(payload any, chartName string) ([]map[string]string, error) {
+	root, ok := payload.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected %s chart payload", chartName)
+	}
+
+	segmentNames := map[string]string{}
+	if segments, ok := root["segments"].([]any); ok {
+		for _, item := range segments {
+			object, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _ := object["id"].(string)
+			displayName, _ := object["display_name"].(string)
+			if id != "" {
+				segmentNames[id] = chooseNonEmpty(displayName, id)
+			}
+		}
+	}
+
+	measures := measureIDs(root["measures"])
+	if rows := rowsFromSummary(root["summary"], segmentNames, measures); len(rows) > 0 {
+		return rows, nil
+	}
+	if rows := rowsFromValueObjects(root["values"], segmentNames, measures); len(rows) > 0 {
+		return rows, nil
+	}
+	if rows := rowsFromValueMatrix(root["values"], segmentNames); len(rows) > 0 {
+		return rows, nil
+	}
+
+	return nil, fmt.Errorf("could not extract segmented country rows from %s chart response", chartName)
+}
+
+func rowsFromSummary(summary any, segmentNames map[string]string, measures []string) []map[string]string {
+	switch value := summary.(type) {
+	case map[string]any:
+		if nested, ok := value["segments"]; ok {
+			if rows := rowsFromSummary(nested, segmentNames, measures); len(rows) > 0 {
+				return rows
+			}
+		}
+
+		rows := make([]map[string]string, 0)
+		for segmentID, displayName := range segmentNames {
+			entry, ok := value[segmentID]
+			if !ok {
+				continue
+			}
+			row := map[string]string{"country": displayName}
+			switch current := entry.(type) {
+			case map[string]any:
+				scalars := scalarMeasureFields(current, measures)
+				if len(scalars) == 0 {
+					continue
+				}
+				for key, item := range scalars {
+					row[key] = formatMetric(item)
+				}
+			default:
+				row[firstMeasureOrValue(measures)] = formatMetric(current)
+			}
+			rows = append(rows, row)
+		}
+		if len(rows) > 0 {
+			return rows
+		}
+
+		if len(segmentNames) == 0 {
+			for key, item := range value {
+				if object, ok := item.(map[string]any); ok {
+					row := map[string]string{"country": key}
+					scalars := scalarMeasureFields(object, measures)
+					if len(scalars) == 0 {
+						continue
+					}
+					for scalarKey, scalarValue := range scalars {
+						row[scalarKey] = formatMetric(scalarValue)
+					}
+					rows = append(rows, row)
+					continue
+				}
+				if isScalarMetric(item) {
+					rows = append(rows, map[string]string{
+						"country":                     key,
+						firstMeasureOrValue(measures): formatMetric(item),
+					})
+				}
+			}
+		}
+		return rows
+	case []any:
+		rows := make([]map[string]string, 0, len(value))
+		for _, item := range value {
+			object, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			row := rowFromMetricObject(object, segmentNames, measures)
+			if len(row) == 0 {
+				continue
+			}
+			rows = append(rows, row)
+		}
+		return rows
+	default:
+		return nil
+	}
+}
+
+func rowsFromValueObjects(values any, segmentNames map[string]string, measures []string) []map[string]string {
+	items, ok := values.([]any)
+	if !ok {
+		return nil
+	}
+
+	rows := make([]map[string]string, 0, len(items))
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		row := rowFromMetricObject(object, segmentNames, measures)
+		if len(row) == 0 {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func rowsFromValueMatrix(values any, segmentNames map[string]string) []map[string]string {
+	items, ok := values.([]any)
+	if !ok || len(items) == 0 || len(segmentNames) == 0 {
+		return nil
+	}
+
+	segmentOrder := orderedSegments(segmentNames)
+	totals := make([]float64, len(segmentOrder))
+	seen := false
+	for _, item := range items {
+		series, ok := item.([]any)
+		if !ok || len(series) != len(segmentOrder) {
+			return nil
+		}
+		for index, current := range series {
+			number, ok := toFloat(current)
+			if !ok {
+				return nil
+			}
+			totals[index] += number
+			seen = true
+		}
+	}
+	if !seen {
+		return nil
+	}
+
+	rows := make([]map[string]string, 0, len(segmentOrder))
+	for index, segmentID := range segmentOrder {
+		rows = append(rows, map[string]string{
+			"country": chooseNonEmpty(segmentNames[segmentID], segmentID),
+			"value":   formatMetric(totals[index]),
+		})
+	}
+	return rows
+}
+
+func orderedSegments(segmentNames map[string]string) []string {
+	order := make([]string, 0, len(segmentNames))
+	for segmentID := range segmentNames {
+		order = append(order, segmentID)
+	}
+	// Preserve deterministic output.
+	for i := 0; i < len(order)-1; i++ {
+		for j := i + 1; j < len(order); j++ {
+			if segmentNames[order[i]] > segmentNames[order[j]] {
+				order[i], order[j] = order[j], order[i]
+			}
+		}
+	}
+	return order
+}
+
+func rowFromMetricObject(object map[string]any, segmentNames map[string]string, measures []string) map[string]string {
+	segmentID := firstString(object["segment_id"], object["country"], object["country_id"], object["id"])
+	if segmentID == "" {
+		return nil
+	}
+	row := map[string]string{"country": chooseNonEmpty(segmentNames[segmentID], segmentID)}
+
+	scalars := scalarMeasureFields(object, measures)
+	delete(scalars, "segment_id")
+	delete(scalars, "country")
+	delete(scalars, "country_id")
+	delete(scalars, "id")
+	delete(scalars, "display_name")
+	delete(scalars, "date")
+	delete(scalars, "timestamp")
+	delete(scalars, "time")
+	for key, value := range scalars {
+		row[key] = formatMetric(value)
+	}
+	if len(row) == 1 {
+		return nil
+	}
+	return row
+}
+
+func scalarMeasureFields(object map[string]any, measures []string) map[string]any {
+	fields := map[string]any{}
+	for _, measure := range measures {
+		if value, ok := object[measure]; ok && isScalarMetric(value) {
+			fields[measure] = value
+		}
+	}
+	if len(fields) > 0 {
+		return fields
+	}
+	for key, value := range object {
+		if !isScalarMetric(value) {
+			continue
+		}
+		fields[key] = value
+	}
+	return fields
+}
+
+func measureIDs(raw any) []string {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	measures := make([]string, 0, len(items))
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := firstString(object["id"], object["name"], object["key"], object["display_name"])
+		if id == "" {
+			continue
+		}
+		measures = append(measures, id)
+	}
+	return measures
+}
+
+func upsertFilter(filters []any, name string, values []string) []any {
+	for index, item := range filters {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		currentName := firstString(object["name"], object["id"])
+		if currentName != name {
+			continue
+		}
+		object["name"] = name
+		object["values"] = values
+		filters[index] = object
+		return filters
+	}
+	return append(filters, map[string]any{
+		"name":   name,
+		"values": values,
+	})
+}
+
+func appMatchesBundleID(app map[string]any, bundleID string) bool {
+	want := strings.TrimSpace(bundleID)
+	candidates := []string{
+		nestedString(app, "app_store", "bundle_id"),
+		nestedString(app, "mac_app_store", "bundle_id"),
+		nestedString(app, "play_store", "package_name"),
+		nestedString(app, "amazon", "package_name"),
+	}
+	for _, candidate := range candidates {
+		if candidate == want {
+			return true
+		}
+	}
+	return false
+}
+
+func nestedString(object map[string]any, keys ...string) string {
+	current := any(object)
+	for _, key := range keys {
+		next, ok := current.(map[string]any)
+		if !ok {
+			return ""
+		}
+		current = next[key]
+	}
+	value, _ := current.(string)
+	return value
+}
+
+func orderedCountryHeaders(rows []map[string]string) []string {
+	priority := []string{"context_alias", "project_id", "country", "revenue", "transactions", "value"}
+	seen := map[string]struct{}{}
+	headers := make([]string, 0)
+	for _, row := range rows {
+		for _, key := range priority {
+			if _, ok := row[key]; ok {
+				if _, exists := seen[key]; !exists {
+					headers = append(headers, key)
+					seen[key] = struct{}{}
+				}
+			}
+		}
+		for key := range row {
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			headers = append(headers, key)
+			seen[key] = struct{}{}
+		}
+	}
+	return headers
+}
+
+func firstMeasureOrValue(measures []string) string {
+	if len(measures) == 0 {
+		return "value"
+	}
+	return measures[0]
+}
+
+func firstString(values ...any) string {
+	for _, value := range values {
+		if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func chooseNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func isScalarMetric(value any) bool {
+	switch value.(type) {
+	case string, float64, float32, int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
+		return true
+	default:
+		return false
+	}
+}
+
+func toFloat(value any) (float64, bool) {
+	switch current := value.(type) {
+	case float64:
+		return current, true
+	case float32:
+		return float64(current), true
+	case int:
+		return float64(current), true
+	case int64:
+		return float64(current), true
+	case int32:
+		return float64(current), true
+	case int16:
+		return float64(current), true
+	case int8:
+		return float64(current), true
+	case uint:
+		return float64(current), true
+	case uint64:
+		return float64(current), true
+	case uint32:
+		return float64(current), true
+	case uint16:
+		return float64(current), true
+	case uint8:
+		return float64(current), true
+	case string:
+		parsed, err := strconv.ParseFloat(current, 64)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
+}
+
+func formatMetric(value any) string {
+	switch current := value.(type) {
+	case string:
+		return current
+	default:
+		number, ok := toFloat(current)
+		if !ok {
+			return fmt.Sprint(current)
+		}
+		if math.Mod(number, 1) == 0 {
+			return strconv.FormatInt(int64(number), 10)
+		}
+		return strconv.FormatFloat(number, 'f', -1, 64)
+	}
 }

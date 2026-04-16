@@ -114,13 +114,24 @@ revenuecat auth status
 revenuecat pull project --chart trials
 ```
 
-### 4️⃣ Compare every configured project
+### 4️⃣ Resolve an app and inspect country metrics
+
+```bash
+revenuecat apps resolve --context ios-prod --bundle-id app.ferdi.headson
+revenuecat metrics countries revenue \
+  --context ios-prod \
+  --app app_1 \
+  --start 2026-01-01 \
+  --end 2026-04-16
+```
+
+### 5️⃣ Compare every configured project
 
 ```bash
 revenuecat pull all --include-customers
 ```
 
-### 5️⃣ Create resources with JSON payloads
+### 6️⃣ Create resources with JSON payloads
 
 ```bash
 revenuecat entitlements create --data '{"lookup_key":"pro","display_name":"Pro Access"}'
@@ -152,8 +163,8 @@ revenuecat offerings create --file ./payloads/offering-create.json
     </tr>
     <tr>
       <td><code>apps</code></td>
-      <td>list · get · create · update</td>
-      <td>App metadata and app registration updates</td>
+      <td>list · get · create · update · resolve</td>
+      <td>App metadata, app registration updates, and bundle-id lookup</td>
     </tr>
     <tr>
       <td><code>entitlements</code></td>
@@ -177,8 +188,8 @@ revenuecat offerings create --file ./payloads/offering-create.json
     </tr>
     <tr>
       <td><code>metrics</code></td>
-      <td>overview · chart · options</td>
-      <td>Overview KPIs and chart reads</td>
+      <td>overview · chart · countries · options</td>
+      <td>Overview KPIs, raw chart reads, and country breakdown tables</td>
     </tr>
     <tr>
       <td><code>customers</code>, <code>subscriptions</code>, <code>purchases</code></td>
@@ -211,6 +222,15 @@ Use this pattern for Codex, Claude, Cursor, or internal agents:
 5. Keep `--all-contexts` read-only.
 
 Repo-local guidance also lives in [`AGENTS.md`](AGENTS.md) and [`skills/revenuecat-cli/SKILL.md`](skills/revenuecat-cli/SKILL.md).
+
+For metrics charts that need complex RevenueCat filters or selectors, you can pass raw JSON directly instead of shell-fragile `--param` values:
+
+```bash
+revenuecat metrics chart revenue \
+  --context ios-prod \
+  --filters-json '[{"name":"app_id","values":["app_1"]},{"name":"store","values":["app_store"]}]' \
+  --selectors-json '{"revenue_type":"revenue"}'
+```
 
 To install the bundled Codex skill directly from the CLI:
 
