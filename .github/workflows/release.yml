@@ -55,8 +55,9 @@ jobs:
 
             Highlights:
             - agent-first RevenueCat CLI
-            - named API key contexts for multi-project workflows
-            - JSON-first metrics, resource, and snapshot commands
+            - API keys and OAuth tokens stored in the OS credential store
+            - OAuth login with PKCE, token refresh, and account-level projects commands
+            - JSON-first metrics, resource, and snapshot commands with context or OAuth project targeting
             - Homebrew tap formula update in the follow-up job
 
   update-homebrew-tap:

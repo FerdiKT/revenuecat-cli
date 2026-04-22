@@ -69,7 +69,7 @@ go install github.com/FerdiKT/revenuecat-cli/cmd/revenuecat@latest
 ```bash
 git clone https://github.com/FerdiKT/revenuecat-cli.git
 cd revenuecat-cli
-make build VERSION=v0.1.0
+make build VERSION=v0.2.0
 ./bin/revenuecat version
 ```
 
