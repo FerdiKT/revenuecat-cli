@@ -154,6 +154,11 @@ revenuecat offerings create --file ./payloads/offering-create.json
   </thead>
   <tbody>
     <tr>
+      <td><code>projects</code></td>
+      <td>list · get</td>
+      <td>OAuth-backed account-level project discovery</td>
+    </tr>
+    <tr>
       <td><code>contexts</code></td>
       <td>add · list · use · show · remove · verify</td>
       <td>Named API key contexts, active context switching</td>
@@ -257,6 +262,8 @@ The stable path uses **project-scoped RevenueCat API keys** organized into named
 - `--all-contexts` fans out read-only commands across every configured project.
 - API keys are stored in the OS credential store; legacy config files with inline `api_key` values are migrated on first load.
 - `revenuecat auth login` uses the shared public OAuth client with PKCE.
+- `revenuecat projects list` and `revenuecat projects get <project_id>` use OAuth for account-level project discovery.
+- Expired OAuth access tokens are refreshed automatically when a refresh token is available.
 - OAuth access and refresh tokens are stored in the OS credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service.
 - The local config file stores context and OAuth metadata only, not API keys or OAuth tokens.
 - On Linux, a Secret Service provider such as GNOME Keyring, KWallet, or KeePassXC Secret Service must be available.

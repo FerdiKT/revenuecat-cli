@@ -59,6 +59,7 @@ func addResourceCommands(root *cobra.Command, app *App) {
 	appsCmd.AddCommand(newAppsResolveCommand(app))
 
 	root.AddCommand(
+		newProjectsCommand(app),
 		appsCmd,
 		newStandardResourceCommand(app, resourceDefinition{
 			Plural:   "entitlements",
@@ -212,6 +213,92 @@ func newStandardResourceCommand(app *App, def resourceDefinition) *cobra.Command
 		}
 	}
 
+	return cmd
+}
+
+func newProjectsCommand(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "projects",
+		Short: "Read account-level projects with OAuth",
+	}
+	cmd.AddCommand(newProjectsListCommand(app), newProjectsGetCommand(app))
+	return cmd
+}
+
+func newProjectsListCommand(app *App) *cobra.Command {
+	var flags requestFlags
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List projects available to the OAuth user",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := app.loadConfigMetadataOnly()
+			if err != nil {
+				return err
+			}
+			query, err := parseQuery(flags)
+			if err != nil {
+				return err
+			}
+			client, err := app.oauthClient(context.Background(), cfg)
+			if err != nil {
+				return err
+			}
+			result, err := client.Do(context.Background(), rcapi.Request{
+				Method:    http.MethodGet,
+				Path:      "projects",
+				Query:     query,
+				RetryMode: app.requestRetryMode(http.MethodGet),
+			})
+			if err != nil {
+				var apiErr *rcapi.APIError
+				if ok := errorAs(err, &apiErr); ok {
+					return app.mapAPIError(nil, apiErr, "")
+				}
+				return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+			}
+			return app.renderAccountRead(result)
+		},
+	}
+	addReadFlags(cmd, &flags)
+	return cmd
+}
+
+func newProjectsGetCommand(app *App) *cobra.Command {
+	var flags requestFlags
+	cmd := &cobra.Command{
+		Use:   "get <project_id>",
+		Short: "Get a project available to the OAuth user",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := app.loadConfigMetadataOnly()
+			if err != nil {
+				return err
+			}
+			query, err := parseQuery(flags)
+			if err != nil {
+				return err
+			}
+			client, err := app.oauthClient(context.Background(), cfg)
+			if err != nil {
+				return err
+			}
+			result, err := client.Do(context.Background(), rcapi.Request{
+				Method:    http.MethodGet,
+				Path:      fmt.Sprintf("projects/%s", args[0]),
+				Query:     query,
+				RetryMode: app.requestRetryMode(http.MethodGet),
+			})
+			if err != nil {
+				var apiErr *rcapi.APIError
+				if ok := errorAs(err, &apiErr); ok {
+					return app.mapAPIError(nil, apiErr, "")
+				}
+				return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+			}
+			return app.renderAccountRead(result)
+		},
+	}
+	addReadFlags(cmd, &flags)
 	return cmd
 }
 

@@ -53,6 +53,14 @@ func (a *App) loadConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
+func (a *App) loadConfigMetadataOnly() (*config.Config, error) {
+	cfg, err := a.store.Load()
+	if err != nil {
+		return nil, &CLIError{Code: exitcode.Internal, Message: err.Error()}
+	}
+	return cfg, nil
+}
+
 func (a *App) saveConfig(cfg *config.Config) error {
 	if err := a.store.Save(cfg); err != nil {
 		return &CLIError{Code: exitcode.Internal, Message: err.Error()}
@@ -178,6 +186,18 @@ func (a *App) renderRead(ctx config.Context, result *rcapi.Result) error {
 	}
 
 	return output.PrintJSON(os.Stdout, envelope)
+}
+
+func (a *App) renderAccountRead(result *rcapi.Result) error {
+	meta := output.Meta{RequestID: result.RequestID}
+	if pagination := extractPagination(result.Payload); pagination != nil {
+		meta.Pagination = pagination
+	}
+	if shouldTable(a.globalFlags) {
+		rows := toTableRows(result.Payload)
+		return output.PrintTable(os.Stdout, rows)
+	}
+	return output.PrintJSON(os.Stdout, output.Success(nil, result.Payload, meta))
 }
 
 func (a *App) renderMutation(ctx config.Context, result *rcapi.Result, action string) error {

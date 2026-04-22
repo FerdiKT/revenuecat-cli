@@ -150,10 +150,12 @@ func newAuthLoginCommand(app *App) *cobra.Command {
 			}
 
 			cfg.OAuth = config.OAuth{
-				ClientID:    clientID,
-				RedirectURI: redirectURI,
-				Scopes:      scopes,
-				TokenStore:  credentials.StoreName,
+				ClientID:     clientID,
+				RedirectURI:  redirectURI,
+				OAuthBaseURL: strings.TrimRight(oauthBaseURL, "/"),
+				APIBaseURL:   config.DefaultAPIBaseURL,
+				Scopes:       scopes,
+				TokenStore:   credentials.StoreName,
 			}
 			if err := app.saveConfig(cfg); err != nil {
 				return err

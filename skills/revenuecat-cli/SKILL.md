@@ -26,6 +26,7 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 ## Read Pattern
 
 - Start with `revenuecat pull project` for a single project snapshot.
+- After OAuth login, use `revenuecat projects list` for account-level project discovery.
 - Use `revenuecat pull all` to compare every configured project.
 - Use `revenuecat <resource> list` or `get` for narrower reads.
 - Use `revenuecat apps resolve --bundle-id ...` when you need an app id for metrics filters.
@@ -42,4 +43,4 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 
 ## Auth Guardrail
 
-API key contexts remain the stable path for project-scoped commands. API keys and OAuth tokens are stored in the OS credential store. Never print raw API keys, OAuth access tokens, or OAuth refresh tokens.
+API key contexts remain the stable path for project-scoped commands. OAuth-backed `projects list|get` is available for account-level project discovery. API keys and OAuth tokens are stored in the OS credential store. Never print raw API keys, OAuth access tokens, or OAuth refresh tokens.

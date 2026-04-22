@@ -34,10 +34,12 @@ type Config struct {
 }
 
 type OAuth struct {
-	ClientID    string   `json:"client_id,omitempty"`
-	RedirectURI string   `json:"redirect_uri,omitempty"`
-	Scopes      []string `json:"scopes,omitempty"`
-	TokenStore  string   `json:"token_store,omitempty"`
+	ClientID     string   `json:"client_id,omitempty"`
+	RedirectURI  string   `json:"redirect_uri,omitempty"`
+	OAuthBaseURL string   `json:"oauth_base_url,omitempty"`
+	APIBaseURL   string   `json:"api_base_url,omitempty"`
+	Scopes       []string `json:"scopes,omitempty"`
+	TokenStore   string   `json:"token_store,omitempty"`
 }
 
 type Store struct {

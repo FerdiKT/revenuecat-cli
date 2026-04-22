@@ -182,6 +182,96 @@ func TestLoadConfigMigratesAPIKeysToCredentialStore(t *testing.T) {
 	}
 }
 
+func TestProjectsListRefreshesOAuthToken(t *testing.T) {
+	keyring.MockInit()
+
+	refreshSeen := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth2/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm: %v", err)
+			}
+			refreshSeen = true
+			if got := r.Form.Get("grant_type"); got != "refresh_token" {
+				t.Fatalf("grant_type = %q", got)
+			}
+			if got := r.Form.Get("refresh_token"); got != "rtk_old" {
+				t.Fatalf("refresh_token = %q", got)
+			}
+			if got := r.Form.Get("client_secret"); got != "" {
+				t.Fatalf("client_secret = %q, want empty", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token":  "atk_fresh",
+				"refresh_token": "rtk_new",
+				"token_type":    "Bearer",
+				"expires_in":    3600,
+				"scope":         "project_configuration:projects:read",
+			})
+		case "/v2/projects":
+			if got := r.Header.Get("Authorization"); got != "Bearer atk_fresh" {
+				t.Fatalf("Authorization = %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"object": "list",
+				"items": []any{
+					map[string]any{"id": "proj_1", "name": "Project One"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	store, err := config.NewStore(filepath.Join(tempConfig, "revenuecat", "config.json"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(&config.Config{
+		OAuth: config.OAuth{
+			ClientID:     "client_test",
+			OAuthBaseURL: server.URL,
+			APIBaseURL:   server.URL + "/v2",
+			TokenStore:   credentials.StoreName,
+		},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := credentials.SaveOAuth(credentials.OAuthToken{
+		AccessToken:  "atk_old",
+		RefreshToken: "rtk_old",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+		Scopes:       []string{"project_configuration:projects:read"},
+	}); err != nil {
+		t.Fatalf("SaveOAuth: %v", err)
+	}
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{"projects", "list"})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !refreshSeen {
+		t.Fatal("expected token refresh")
+	}
+	if !strings.Contains(stdout, `"id": "proj_1"`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+
+	token, found, err := credentials.LoadOAuth()
+	if err != nil {
+		t.Fatalf("LoadOAuth: %v", err)
+	}
+	if !found || token.AccessToken != "atk_fresh" || token.RefreshToken != "rtk_new" {
+		t.Fatalf("token = %#v, found=%t", token, found)
+	}
+}
+
 func TestPullBundleBuildsAggregatedSnapshot(t *testing.T) {
 	server := newRevenueCatFixtureServer()
 	defer server.Close()
