@@ -43,6 +43,7 @@ If a context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts
 
 - Start with ` + "`revenuecat pull project`" + ` for a single project snapshot.
 - After OAuth login, use ` + "`revenuecat projects list`" + ` for account-level project discovery.
+- After OAuth login, use ` + "`revenuecat projects create --name \"...\"`" + ` for account-level project creation.
 - For OAuth project-scoped reads, pass ` + "`--project-id <project_id>`" + ` to the resource command.
 - Use ` + "`revenuecat pull all`" + ` to compare every configured project.
 - Use ` + "`revenuecat <resource> list`" + ` or ` + "`get`" + ` for narrower reads.

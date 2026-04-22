@@ -272,6 +272,164 @@ func TestProjectsListRefreshesOAuthToken(t *testing.T) {
 	}
 }
 
+func TestProjectsCreateUsesOAuth(t *testing.T) {
+	keyring.MockInit()
+
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer atk_valid" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "project",
+			"id":     "proj_new",
+			"name":   "New Project",
+		})
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	store, err := config.NewStore(filepath.Join(tempConfig, "revenuecat", "config.json"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(&config.Config{
+		OAuth: config.OAuth{
+			ClientID:   "client_test",
+			APIBaseURL: server.URL + "/v2",
+			TokenStore: credentials.StoreName,
+		},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := credentials.SaveOAuth(credentials.OAuthToken{
+		AccessToken:  "atk_valid",
+		RefreshToken: "rtk_valid",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		Scopes:       []string{"project_configuration:projects:read_write"},
+	}); err != nil {
+		t.Fatalf("SaveOAuth: %v", err)
+	}
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{"projects", "create", "--name", "New Project"})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if body["name"] != "New Project" {
+		t.Fatalf("body = %#v", body)
+	}
+	if !strings.Contains(stdout, "project created: proj_new") {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
+func TestProjectsCreateSupportsJSONBodyAndOutput(t *testing.T) {
+	keyring.MockInit()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode: %v", err)
+		}
+		if body["name"] != "JSON Project" {
+			t.Fatalf("body = %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "project",
+			"id":     "proj_json",
+			"name":   "JSON Project",
+		})
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	store, err := config.NewStore(filepath.Join(tempConfig, "revenuecat", "config.json"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(&config.Config{
+		OAuth: config.OAuth{
+			ClientID:   "client_test",
+			APIBaseURL: server.URL + "/v2",
+			TokenStore: credentials.StoreName,
+		},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := credentials.SaveOAuth(credentials.OAuthToken{
+		AccessToken:  "atk_valid",
+		RefreshToken: "rtk_valid",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		Scopes:       []string{"project_configuration:projects:read_write"},
+	}); err != nil {
+		t.Fatalf("SaveOAuth: %v", err)
+	}
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{
+		"projects", "create",
+		"--data", `{"name":"JSON Project"}`,
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, `"ok": true`) || !strings.Contains(stdout, `"id": "proj_json"`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
+func TestProjectsCreateRejectsProjectScopedFlags(t *testing.T) {
+	keyring.MockInit()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	store, err := config.NewStore(filepath.Join(tempConfig, "revenuecat", "config.json"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(&config.Config{}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	cmd, _ := newRootCommand()
+	_, _, err = executeCommand(t, cmd, []string{
+		"projects", "create",
+		"--name", "Bad Project",
+		"--project-id", "proj_123",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var cliErr *CLIError
+	if !errorAsCLI(err, &cliErr) {
+		t.Fatalf("err = %T, want *CLIError", err)
+	}
+	if cliErr.Code != 2 {
+		t.Fatalf("cliErr.Code = %d, want 2", cliErr.Code)
+	}
+	if !strings.Contains(cliErr.Message, "account-level OAuth only") {
+		t.Fatalf("message = %q", cliErr.Message)
+	}
+}
+
 func TestResourceCommandSupportsOAuthProjectID(t *testing.T) {
 	keyring.MockInit()
 

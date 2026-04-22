@@ -234,6 +234,21 @@ func (a *App) renderMutation(ctx config.Context, result *rcapi.Result, action st
 	return err
 }
 
+func (a *App) renderAccountMutation(result *rcapi.Result, action string) error {
+	if a.globalFlags.JSON {
+		meta := output.Meta{RequestID: result.RequestID}
+		envelope := output.Success(nil, result.Payload, meta)
+		return output.PrintJSON(os.Stdout, envelope)
+	}
+
+	if id := extractID(result.Payload); id != "" {
+		_, err := fmt.Fprintf(os.Stdout, "%s: %s\n", action, id)
+		return err
+	}
+	_, err := fmt.Fprintln(os.Stdout, action)
+	return err
+}
+
 func shouldTable(flags GlobalFlags) bool {
 	return strings.EqualFold(flags.Format, "table")
 }
@@ -260,6 +275,21 @@ func parseBody(data, file string) (any, error) {
 		return nil, &CLIError{Code: exitcode.Usage, Message: fmt.Sprintf("invalid JSON body: %v", err)}
 	}
 	return payload, nil
+}
+
+func projectCreateBody(name string, flags requestFlags) (any, error) {
+	hasName := strings.TrimSpace(name) != ""
+	hasBody := flags.data != "" || flags.dataFile != ""
+	switch {
+	case hasName && hasBody:
+		return nil, &CLIError{Code: exitcode.Usage, Message: "use either --name or --data/--file, not both"}
+	case hasName:
+		return map[string]any{"name": strings.TrimSpace(name)}, nil
+	case hasBody:
+		return parseBody(flags.data, flags.dataFile)
+	default:
+		return nil, &CLIError{Code: exitcode.Usage, Message: "one of --name, --data, or --file is required"}
+	}
 }
 
 func parseQuery(flags requestFlags) (url.Values, error) {

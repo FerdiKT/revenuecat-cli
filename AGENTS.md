@@ -22,6 +22,7 @@ This repository contains an agent-first CLI for RevenueCat v2.
 
 - For project discovery inside a known context: `revenuecat pull project`
 - For account-level project discovery after OAuth login: `revenuecat projects list`
+- For account-level project creation after OAuth login: `revenuecat projects create --name "..."`
 - For OAuth project-scoped reads: `revenuecat <resource> list --project-id <project_id>`
 - For estate-wide comparison: `revenuecat pull all`
 - For focused reads: `revenuecat <resource> list|get`

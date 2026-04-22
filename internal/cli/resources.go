@@ -252,9 +252,9 @@ func newStandardResourceCommand(app *App, def resourceDefinition) *cobra.Command
 func newProjectsCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "projects",
-		Short: "Read account-level projects with OAuth",
+		Short: "Manage account-level projects with OAuth",
 	}
-	cmd.AddCommand(newProjectsListCommand(app), newProjectsGetCommand(app))
+	cmd.AddCommand(newProjectsListCommand(app), newProjectsGetCommand(app), newProjectsCreateCommand(app))
 	return cmd
 }
 
@@ -332,6 +332,49 @@ func newProjectsGetCommand(app *App) *cobra.Command {
 		},
 	}
 	addReadFlags(cmd, &flags)
+	return cmd
+}
+
+func newProjectsCreateCommand(app *App) *cobra.Command {
+	var flags requestFlags
+	var name string
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a project with OAuth",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if app.globalFlags.AllContexts || strings.TrimSpace(app.globalFlags.ContextAlias) != "" || strings.TrimSpace(app.globalFlags.ProjectID) != "" {
+				return &CLIError{Code: exitcode.Usage, Message: "projects create is account-level OAuth only; do not pass --context, --all-contexts, or --project-id"}
+			}
+			cfg, err := app.loadConfigMetadataOnly()
+			if err != nil {
+				return err
+			}
+			body, err := projectCreateBody(name, flags)
+			if err != nil {
+				return err
+			}
+			client, err := app.oauthClient(context.Background(), cfg)
+			if err != nil {
+				return err
+			}
+			result, err := client.Do(context.Background(), rcapi.Request{
+				Method:    http.MethodPost,
+				Path:      "projects",
+				Body:      body,
+				RetryMode: app.requestRetryMode(http.MethodPost),
+			})
+			if err != nil {
+				var apiErr *rcapi.APIError
+				if ok := errorAs(err, &apiErr); ok {
+					return app.mapAPIError(nil, apiErr, "")
+				}
+				return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+			}
+			return app.renderAccountMutation(result, "project created")
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "Project name")
+	addRequestBodyFlags(cmd, &flags)
 	return cmd
 }
 
