@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/FerdiKT/revenuecat-cli/internal/config"
+	"github.com/FerdiKT/revenuecat-cli/internal/credentials"
+	"github.com/zalando/go-keyring"
 )
 
 type writeCapture chan string
@@ -98,6 +100,8 @@ func TestRunOAuthLoginUsesPKCEAndStoresTokenResponse(t *testing.T) {
 }
 
 func TestAuthStatusOutputsJSON(t *testing.T) {
+	keyring.MockInit()
+
 	tempConfig := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tempConfig)
 
@@ -126,6 +130,55 @@ func TestAuthStatusOutputsJSON(t *testing.T) {
 	}
 	if payload["ok"] != true {
 		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestLoadConfigMigratesAPIKeysToCredentialStore(t *testing.T) {
+	keyring.MockInit()
+
+	tempConfig := t.TempDir()
+	configPath := filepath.Join(tempConfig, "revenuecat", "config.json")
+	store, err := config.NewStore(configPath)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(&config.Config{
+		ActiveContext: "prod",
+		Contexts: []config.Context{{
+			Alias:     "prod",
+			APIKey:    "sk_legacy",
+			ProjectID: "proj_123",
+		}},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	app := &App{store: store}
+	cfg, err := app.loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.Contexts[0].APIKey != "sk_legacy" {
+		t.Fatalf("hydrated APIKey = %q", cfg.Contexts[0].APIKey)
+	}
+	if cfg.Contexts[0].APIKeyStore != credentials.StoreName {
+		t.Fatalf("APIKeyStore = %q", cfg.Contexts[0].APIKeyStore)
+	}
+
+	stored, found, err := credentials.LoadAPIKey("prod")
+	if err != nil {
+		t.Fatalf("LoadAPIKey: %v", err)
+	}
+	if !found || stored != "sk_legacy" {
+		t.Fatalf("stored API key = %q, found=%t", stored, found)
+	}
+
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if strings.Contains(string(raw), "sk_legacy") {
+		t.Fatalf("config still contains API key: %s", raw)
 	}
 }
 

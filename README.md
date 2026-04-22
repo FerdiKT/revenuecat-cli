@@ -33,6 +33,7 @@
 | | |
 |---|---|
 | 🧭 **Named contexts** | Keep one local registry for all project-scoped API keys |
+| 🔐 **Secret storage** | API keys and OAuth tokens live in the OS credential store |
 | 🔐 **OAuth login** | Shared public client with PKCE and OS credential-store token storage |
 | 🤖 **Agent-first output** | Deterministic JSON envelopes for LLMs, scripts, and CI |
 | 📦 **Project snapshots** | `pull project` and `pull all` for fast planning and comparison |
@@ -254,9 +255,10 @@ The stable path uses **project-scoped RevenueCat API keys** organized into named
 - Active context is the default target.
 - `--context <alias>` overrides the active context.
 - `--all-contexts` fans out read-only commands across every configured project.
+- API keys are stored in the OS credential store; legacy config files with inline `api_key` values are migrated on first load.
 - `revenuecat auth login` uses the shared public OAuth client with PKCE.
 - OAuth access and refresh tokens are stored in the OS credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service.
-- The local config file stores OAuth metadata only, not OAuth tokens.
+- The local config file stores context and OAuth metadata only, not API keys or OAuth tokens.
 - On Linux, a Secret Service provider such as GNOME Keyring, KWallet, or KeePassXC Secret Service must be available.
 
 ---

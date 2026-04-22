@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/zalando/go-keyring"
 )
 
 const (
+	StoreName        = "os_credential_store"
 	serviceName      = "revenuecat-cli"
 	oauthAccountName = "oauth-token"
 )
@@ -52,4 +54,33 @@ func DeleteOAuth() error {
 		return fmt.Errorf("delete OAuth token from OS credential store: %w", err)
 	}
 	return nil
+}
+
+func SaveAPIKey(alias, apiKey string) error {
+	if err := keyring.Set(serviceName, apiKeyAccountName(alias), apiKey); err != nil {
+		return fmt.Errorf("save API key to OS credential store: %w", err)
+	}
+	return nil
+}
+
+func LoadAPIKey(alias string) (string, bool, error) {
+	apiKey, err := keyring.Get(serviceName, apiKeyAccountName(alias))
+	if err != nil {
+		if errors.Is(err, keyring.ErrNotFound) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("load API key from OS credential store: %w", err)
+	}
+	return apiKey, true, nil
+}
+
+func DeleteAPIKey(alias string) error {
+	if err := keyring.Delete(serviceName, apiKeyAccountName(alias)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return fmt.Errorf("delete API key from OS credential store: %w", err)
+	}
+	return nil
+}
+
+func apiKeyAccountName(alias string) string {
+	return "api-key:" + strings.ToLower(strings.TrimSpace(alias))
 }

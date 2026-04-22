@@ -50,3 +50,33 @@ func TestOAuthTokenRoundTrip(t *testing.T) {
 		t.Fatal("expected no token after delete")
 	}
 }
+
+func TestAPIKeyRoundTrip(t *testing.T) {
+	keyring.MockInit()
+
+	if err := SaveAPIKey("Prod", "sk_test"); err != nil {
+		t.Fatalf("SaveAPIKey: %v", err)
+	}
+
+	got, found, err := LoadAPIKey("prod")
+	if err != nil {
+		t.Fatalf("LoadAPIKey: %v", err)
+	}
+	if !found {
+		t.Fatal("expected API key after save")
+	}
+	if got != "sk_test" {
+		t.Fatalf("api key = %q, want sk_test", got)
+	}
+
+	if err := DeleteAPIKey("PROD"); err != nil {
+		t.Fatalf("DeleteAPIKey: %v", err)
+	}
+	_, found, err = LoadAPIKey("prod")
+	if err != nil {
+		t.Fatalf("LoadAPIKey after delete: %v", err)
+	}
+	if found {
+		t.Fatal("expected no API key after delete")
+	}
+}

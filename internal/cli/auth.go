@@ -29,7 +29,6 @@ const (
 	defaultOAuthRedirectURI = "http://127.0.0.1:8787/oauth/callback"
 	defaultOAuthBaseURL     = "https://api.revenuecat.com"
 	oauthSecretEnv          = "REVENUECAT_OAUTH_CLIENT_SECRET"
-	oauthTokenStoreName     = "os_credential_store"
 )
 
 var defaultOAuthScopes = []string{
@@ -94,7 +93,7 @@ func newAuthStatusCommand(app *App) *cobra.Command {
 				"oauth_client_id":    maskClientID(cfg.OAuth.ClientID),
 				"oauth_expires_at":   token.ExpiresAt,
 				"oauth_scopes":       token.Scopes,
-				"oauth_token_store":  chooseNonEmpty(cfg.OAuth.TokenStore, oauthTokenStoreName),
+				"oauth_token_store":  chooseNonEmpty(cfg.OAuth.TokenStore, credentials.StoreName),
 				"oauth_token_status": tokenStatus,
 			}, output.Meta{}))
 		},
@@ -154,7 +153,7 @@ func newAuthLoginCommand(app *App) *cobra.Command {
 				ClientID:    clientID,
 				RedirectURI: redirectURI,
 				Scopes:      scopes,
-				TokenStore:  oauthTokenStoreName,
+				TokenStore:  credentials.StoreName,
 			}
 			if err := app.saveConfig(cfg); err != nil {
 				return err
@@ -164,7 +163,7 @@ func newAuthLoginCommand(app *App) *cobra.Command {
 				"mode":        "oauth",
 				"expires_at":  expiresAt,
 				"scopes":      scopes,
-				"token_store": oauthTokenStoreName,
+				"token_store": credentials.StoreName,
 			}, output.Meta{}))
 		},
 	}

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -77,5 +78,48 @@ func TestConfigUpsertAndRemoveContext(t *testing.T) {
 	}
 	if cfg.ActiveContext != "" {
 		t.Fatalf("ActiveContext = %q, want empty", cfg.ActiveContext)
+	}
+}
+
+func TestStoreSaveStripsStoredAPIKeys(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	path := filepath.Join(tempDir, "config.json")
+	store, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	cfg := &Config{
+		ActiveContext: "prod",
+		Contexts: []Context{{
+			Alias:       "prod",
+			APIKey:      "sk_test_1234",
+			APIKeyStore: "os_credential_store",
+			ProjectID:   "proj_123",
+		}},
+	}
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if strings.Contains(string(raw), "sk_test_1234") {
+		t.Fatalf("stored config leaked API key: %s", raw)
+	}
+
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Contexts[0].APIKey != "" {
+		t.Fatalf("loaded APIKey = %q, want empty", loaded.Contexts[0].APIKey)
+	}
+	if loaded.Contexts[0].APIKeyStore != "os_credential_store" {
+		t.Fatalf("APIKeyStore = %q", loaded.Contexts[0].APIKeyStore)
 	}
 }

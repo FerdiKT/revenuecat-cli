@@ -9,6 +9,7 @@ This repository contains an agent-first CLI for RevenueCat v2.
 - Prefer `pull project` or `pull all` before planning mutations.
 - Use resource commands for exact CRUD operations.
 - Treat API keys and OAuth tokens as secrets. Never echo raw `sk_`, `atk_`, or `rtk_` values in normal output.
+- API keys and OAuth tokens are stored in the OS credential store, not the local config file.
 
 ## Context Workflow
 
@@ -36,4 +37,4 @@ This repository contains an agent-first CLI for RevenueCat v2.
 
 - API key contexts remain the stable path for project-scoped commands.
 - OAuth login is available for account-level workflows and stores tokens in the OS credential store.
-- Do not read, print, or copy OAuth access or refresh tokens from the OS credential store.
+- Do not read, print, or copy API keys, OAuth access tokens, or OAuth refresh tokens from the OS credential store.

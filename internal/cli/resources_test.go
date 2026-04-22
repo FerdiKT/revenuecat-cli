@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/FerdiKT/revenuecat-cli/internal/config"
+	"github.com/zalando/go-keyring"
 )
 
 func TestMetricsChartSupportsJSONFlags(t *testing.T) {
@@ -194,6 +195,7 @@ func TestMetricsCountriesRejectsUnsupportedAppFilter(t *testing.T) {
 
 func writeTestConfig(t *testing.T, baseDir, serverURL string) {
 	t.Helper()
+	keyring.MockInit()
 
 	store, err := config.NewStore(filepath.Join(baseDir, "revenuecat", "config.json"))
 	if err != nil {

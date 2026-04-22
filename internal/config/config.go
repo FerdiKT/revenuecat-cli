@@ -18,7 +18,8 @@ const (
 
 type Context struct {
 	Alias          string         `json:"alias"`
-	APIKey         string         `json:"api_key"`
+	APIKey         string         `json:"api_key,omitempty"`
+	APIKeyStore    string         `json:"api_key_store,omitempty"`
 	ProjectID      string         `json:"project_id,omitempty"`
 	ProjectName    string         `json:"project_name,omitempty"`
 	APIBaseURL     string         `json:"api_base_url,omitempty"`
@@ -102,7 +103,8 @@ func (s *Store) Save(cfg *Config) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	storage := cfg.storageCopy()
+	data, err := json.MarshalIndent(storage, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
 	}
@@ -180,9 +182,21 @@ func (c *Config) normalize() {
 	}
 }
 
+func (c Config) storageCopy() Config {
+	storage := c
+	storage.Contexts = append([]Context(nil), c.Contexts...)
+	for i := range storage.Contexts {
+		if storage.Contexts[i].APIKeyStore != "" {
+			storage.Contexts[i].APIKey = ""
+		}
+	}
+	return storage
+}
+
 func (c *Context) normalize() {
 	c.Alias = strings.TrimSpace(c.Alias)
 	c.APIKey = strings.TrimSpace(c.APIKey)
+	c.APIKeyStore = strings.TrimSpace(c.APIKeyStore)
 	c.ProjectID = strings.TrimSpace(c.ProjectID)
 	c.ProjectName = strings.TrimSpace(c.ProjectName)
 	c.APIBaseURL = strings.TrimSpace(c.APIBaseURL)
@@ -195,7 +209,7 @@ func (c Context) Validate() error {
 	if c.Alias == "" {
 		return errors.New("context alias is required")
 	}
-	if c.APIKey == "" {
+	if c.APIKey == "" && c.APIKeyStore == "" {
 		return fmt.Errorf("context %q is missing api_key", c.Alias)
 	}
 	return nil

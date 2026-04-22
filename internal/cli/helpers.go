@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/FerdiKT/revenuecat-cli/internal/config"
+	"github.com/FerdiKT/revenuecat-cli/internal/credentials"
 	"github.com/FerdiKT/revenuecat-cli/internal/exitcode"
 	"github.com/FerdiKT/revenuecat-cli/internal/output"
 	"github.com/FerdiKT/revenuecat-cli/internal/rcapi"
@@ -46,6 +47,9 @@ func (a *App) loadConfig() (*config.Config, error) {
 	if err != nil {
 		return nil, &CLIError{Code: exitcode.Internal, Message: err.Error()}
 	}
+	if err := a.migrateAndHydrateAPIKeys(cfg); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
@@ -73,6 +77,9 @@ func (a *App) resolveSingleContext(cfg *config.Config) (*config.Context, error) 
 	if !ok {
 		return nil, &CLIError{Code: exitcode.Context, Message: fmt.Sprintf("context %q not found", alias)}
 	}
+	if strings.TrimSpace(ctx.APIKey) == "" {
+		return nil, &CLIError{Code: exitcode.Context, Message: fmt.Sprintf("context %q is missing API key in the OS credential store; run `revenuecat contexts add %s --api-key ...`", ctx.Alias, ctx.Alias)}
+	}
 	return ctx, nil
 }
 
@@ -80,6 +87,11 @@ func (a *App) resolveReadContexts(cfg *config.Config) ([]config.Context, error) 
 	if a.globalFlags.AllContexts {
 		if len(cfg.Contexts) == 0 {
 			return nil, &CLIError{Code: exitcode.Context, Message: "no contexts configured"}
+		}
+		for _, ctx := range cfg.Contexts {
+			if strings.TrimSpace(ctx.APIKey) == "" {
+				return nil, &CLIError{Code: exitcode.Context, Message: fmt.Sprintf("context %q is missing API key in the OS credential store; run `revenuecat contexts add %s --api-key ...`", ctx.Alias, ctx.Alias)}
+			}
 		}
 		return append([]config.Context(nil), cfg.Contexts...), nil
 	}
@@ -93,6 +105,37 @@ func (a *App) resolveReadContexts(cfg *config.Config) ([]config.Context, error) 
 
 func (a *App) clientFor(ctx config.Context) *rcapi.Client {
 	return rcapi.NewClient(ctx.APIKey, ctx.APIBaseURL)
+}
+
+func (a *App) migrateAndHydrateAPIKeys(cfg *config.Config) error {
+	changed := false
+	for i := range cfg.Contexts {
+		ctx := &cfg.Contexts[i]
+		if strings.TrimSpace(ctx.APIKey) != "" {
+			if err := credentials.SaveAPIKey(ctx.Alias, ctx.APIKey); err != nil {
+				return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+			}
+			ctx.APIKeyStore = credentials.StoreName
+			changed = true
+			continue
+		}
+		if ctx.APIKeyStore == "" {
+			continue
+		}
+		apiKey, found, err := credentials.LoadAPIKey(ctx.Alias)
+		if err != nil {
+			return &CLIError{Code: exitcode.Internal, Message: err.Error()}
+		}
+		if found {
+			ctx.APIKey = apiKey
+		}
+	}
+	if changed {
+		if err := a.saveConfig(cfg); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *App) requestRetryMode(method string) rcapi.RetryMode {

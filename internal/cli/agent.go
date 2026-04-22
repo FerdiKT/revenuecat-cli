@@ -54,7 +54,7 @@ If a context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts
 
 ## Auth Guardrail
 
-API key contexts remain the stable path for project-scoped commands. OAuth login is available for account-level workflows and stores tokens in the OS credential store.
+API key contexts remain the stable path for project-scoped commands. API keys and OAuth tokens are stored in the OS credential store.
 `
 	bundledAgentYAML = `display_name: RevenueCat CLI
 short_description: Work with the local RevenueCat agent-first CLI using context-first, pull-first workflows.

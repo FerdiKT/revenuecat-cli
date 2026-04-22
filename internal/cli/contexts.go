@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/FerdiKT/revenuecat-cli/internal/config"
+	"github.com/FerdiKT/revenuecat-cli/internal/credentials"
 	"github.com/FerdiKT/revenuecat-cli/internal/exitcode"
 	"github.com/FerdiKT/revenuecat-cli/internal/output"
 	"github.com/FerdiKT/revenuecat-cli/internal/rcapi"
@@ -53,12 +54,16 @@ func newContextsAddCommand(app *App) *cobra.Command {
 			ctx := config.Context{
 				Alias:       args[0],
 				APIKey:      strings.TrimSpace(apiKey),
+				APIKeyStore: credentials.StoreName,
 				ProjectID:   projectID,
 				ProjectName: projectName,
 				APIBaseURL:  apiBaseURL,
 			}
 			if err := ctx.Validate(); err != nil {
 				return &CLIError{Code: exitcode.Usage, Message: err.Error()}
+			}
+			if err := credentials.SaveAPIKey(ctx.Alias, ctx.APIKey); err != nil {
+				return &CLIError{Code: exitcode.Internal, Message: err.Error()}
 			}
 
 			cfg.UpsertContext(ctx)
@@ -73,11 +78,12 @@ func newContextsAddCommand(app *App) *cobra.Command {
 				return output.PrintJSON(os.Stdout, output.Success(
 					&output.ContextSummary{Alias: ctx.Alias, ProjectID: ctx.ProjectID},
 					map[string]any{
-						"alias":        ctx.Alias,
-						"project_id":   ctx.ProjectID,
-						"project_name": ctx.ProjectName,
-						"api_base_url": ctx.APIBaseURL,
-						"api_key":      config.MaskAPIKey(ctx.APIKey),
+						"alias":         ctx.Alias,
+						"project_id":    ctx.ProjectID,
+						"project_name":  ctx.ProjectName,
+						"api_base_url":  ctx.APIBaseURL,
+						"api_key_store": ctx.APIKeyStore,
+						"api_key":       config.MaskAPIKey(ctx.APIKey),
 					},
 					output.Meta{},
 				))
@@ -111,12 +117,13 @@ func newContextsListCommand(app *App) *cobra.Command {
 			rows := make([]map[string]string, 0, len(cfg.Contexts))
 			for _, ctx := range cfg.Contexts {
 				rows = append(rows, map[string]string{
-					"alias":        ctx.Alias,
-					"active":       fmt.Sprintf("%t", strings.EqualFold(cfg.ActiveContext, ctx.Alias)),
-					"project_id":   ctx.ProjectID,
-					"project_name": ctx.ProjectName,
-					"api_base_url": ctx.APIBaseURL,
-					"api_key":      config.MaskAPIKey(ctx.APIKey),
+					"alias":         ctx.Alias,
+					"active":        fmt.Sprintf("%t", strings.EqualFold(cfg.ActiveContext, ctx.Alias)),
+					"project_id":    ctx.ProjectID,
+					"project_name":  ctx.ProjectName,
+					"api_base_url":  ctx.APIBaseURL,
+					"api_key_store": ctx.APIKeyStore,
+					"api_key":       config.MaskAPIKey(ctx.APIKey),
 				})
 			}
 
@@ -187,6 +194,7 @@ func newContextsShowCommand(app *App) *cobra.Command {
 				"project_id":      ctx.ProjectID,
 				"project_name":    ctx.ProjectName,
 				"api_base_url":    ctx.APIBaseURL,
+				"api_key_store":   ctx.APIKeyStore,
 				"api_key":         config.MaskAPIKey(ctx.APIKey),
 				"cached_metadata": ctx.CachedMetadata,
 			}
@@ -211,6 +219,9 @@ func newContextsRemoveCommand(app *App) *cobra.Command {
 			}
 			if err := app.saveConfig(cfg); err != nil {
 				return err
+			}
+			if err := credentials.DeleteAPIKey(args[0]); err != nil {
+				return &CLIError{Code: exitcode.Internal, Message: err.Error()}
 			}
 
 			fmt.Fprintf(os.Stdout, "context removed: %s\n", args[0])
@@ -257,6 +268,11 @@ func newContextsVerifyCommand(app *App) *cobra.Command {
 				result := fanoutResult{
 					ContextAlias: ctx.Alias,
 					ProjectID:    ctx.ProjectID,
+				}
+				if strings.TrimSpace(ctx.APIKey) == "" {
+					result.Error = map[string]any{"message": fmt.Sprintf("context %q is missing API key in the OS credential store", ctx.Alias)}
+					results = append(results, result)
+					continue
 				}
 				client := app.clientFor(*ctx)
 				projectInfo, err := verifyContext(context.Background(), client, *ctx)
