@@ -160,6 +160,74 @@ func TestAppsDeleteSupportsJSON(t *testing.T) {
 	}
 }
 
+func TestAppsPublicKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/apps/app_1/public_api_keys" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "list",
+			"items": []any{
+				map[string]any{
+					"object":      "public_api_key",
+					"id":          "apikey_1",
+					"key":         "appl_123",
+					"environment": "production",
+					"app_id":      "app_1",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, server.URL)
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{
+		"apps", "public-keys", "app_1",
+		"--context", "prod",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, `"key": "appl_123"`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
+func TestAppsStoreKitConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/apps/app_1/store_kit_config" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "store_kit_config_file",
+			"contents": map[string]any{
+				"identifier": "app_1",
+			},
+		})
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, server.URL)
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{
+		"apps", "storekit-config", "app_1",
+		"--context", "prod",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, `"object": "store_kit_config_file"`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
 func TestMetricsCountriesOutputsTable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

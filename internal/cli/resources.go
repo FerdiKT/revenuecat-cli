@@ -62,7 +62,11 @@ func addResourceCommands(root *cobra.Command, app *App) {
 		},
 		SupportsDelete: true,
 	})
-	appsCmd.AddCommand(newAppsResolveCommand(app))
+	appsCmd.AddCommand(
+		newAppsResolveCommand(app),
+		newAppsPublicKeysCommand(app),
+		newAppsStoreKitConfigCommand(app),
+	)
 
 	root.AddCommand(
 		newProjectsCommand(app),
@@ -830,6 +834,77 @@ type chartOptionSupport struct {
 type segmentInfo struct {
 	ID          string
 	DisplayName string
+}
+
+func newAppsPublicKeysCommand(app *App) *cobra.Command {
+	var flags requestFlags
+	cmd := &cobra.Command{
+		Use:     "public-keys <app_id>",
+		Aliases: []string{"api-keys"},
+		Short:   "List public API keys for an app",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := app.loadConfig()
+			if err != nil {
+				return err
+			}
+			contexts, err := app.resolveReadContexts(cfg)
+			if err != nil {
+				return err
+			}
+			query, err := parseQuery(flags)
+			if err != nil {
+				return err
+			}
+			appID := args[0]
+			return app.runReadAcrossContexts(contexts, func(ctx config.Context) (*rcapi.Result, error) {
+				projectID, err := app.ensureProjectID(ctx)
+				if err != nil {
+					return nil, err
+				}
+				return app.clientFor(ctx).Do(context.Background(), rcapi.Request{
+					Method:    http.MethodGet,
+					Path:      fmt.Sprintf("projects/%s/apps/%s/public_api_keys", projectID, appID),
+					Query:     query,
+					RetryMode: app.requestRetryMode(http.MethodGet),
+				})
+			})
+		},
+	}
+	addReadFlags(cmd, &flags)
+	return cmd
+}
+
+func newAppsStoreKitConfigCommand(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "storekit-config <app_id>",
+		Aliases: []string{"store-config", "storekit"},
+		Short:   "Get the StoreKit configuration for an app",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := app.loadConfig()
+			if err != nil {
+				return err
+			}
+			contexts, err := app.resolveReadContexts(cfg)
+			if err != nil {
+				return err
+			}
+			appID := args[0]
+			return app.runReadAcrossContexts(contexts, func(ctx config.Context) (*rcapi.Result, error) {
+				projectID, err := app.ensureProjectID(ctx)
+				if err != nil {
+					return nil, err
+				}
+				return app.clientFor(ctx).Do(context.Background(), rcapi.Request{
+					Method:    http.MethodGet,
+					Path:      fmt.Sprintf("projects/%s/apps/%s/store_kit_config", projectID, appID),
+					RetryMode: app.requestRetryMode(http.MethodGet),
+				})
+			})
+		},
+	}
+	return cmd
 }
 
 func newMetricsCountriesCommand(app *App) *cobra.Command {

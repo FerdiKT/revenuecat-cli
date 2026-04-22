@@ -32,6 +32,8 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 - Use `revenuecat pull all` to compare every configured project.
 - Use `revenuecat <resource> list` or `get` for narrower reads.
 - Use `revenuecat apps resolve --bundle-id ...` when you need an app id for metrics filters.
+- Use `revenuecat apps public-keys <app_id>` to inspect app public SDK keys.
+- Use `revenuecat apps storekit-config <app_id>` to inspect iOS StoreKit configuration.
 - Use `revenuecat metrics countries <name>` for country breakdown tables.
 - Use `revenuecat metrics chart <name>` for raw chart payloads, and prefer `--filters-json` / `--selectors-json` for complex queries.
 - Use `revenuecat metrics overview` for quick KPI reads.

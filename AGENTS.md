@@ -26,6 +26,8 @@ This repository contains an agent-first CLI for RevenueCat v2.
 - For estate-wide comparison: `revenuecat pull all`
 - For focused reads: `revenuecat <resource> list|get`
 - Resolve app ids with `revenuecat apps resolve --bundle-id ...` before app-scoped metrics queries.
+- Inspect app public SDK keys with `revenuecat apps public-keys <app_id>`.
+- Inspect iOS StoreKit config with `revenuecat apps storekit-config <app_id>`.
 - For country tables: `revenuecat metrics countries <chart_name> --app <app_id> ...`
 - For raw chart payloads: `revenuecat metrics chart <chart_name> --filters-json ... --selectors-json ...`
 - For quick KPI reads: `revenuecat metrics overview|options`

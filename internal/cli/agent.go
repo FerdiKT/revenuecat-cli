@@ -46,6 +46,8 @@ If a context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts
 - For OAuth project-scoped reads, pass ` + "`--project-id <project_id>`" + ` to the resource command.
 - Use ` + "`revenuecat pull all`" + ` to compare every configured project.
 - Use ` + "`revenuecat <resource> list`" + ` or ` + "`get`" + ` for narrower reads.
+- Use ` + "`revenuecat apps public-keys <app_id>`" + ` to inspect app public SDK keys.
+- Use ` + "`revenuecat apps storekit-config <app_id>`" + ` to inspect iOS StoreKit configuration.
 - Use ` + "`revenuecat metrics overview`" + ` or ` + "`revenuecat metrics chart <name>`" + ` for KPI and chart data.
 
 ## Mutation Pattern

@@ -171,8 +171,8 @@ revenuecat offerings create --file ./payloads/offering-create.json
     </tr>
     <tr>
       <td><code>apps</code></td>
-      <td>list · get · create · update · delete · resolve</td>
-      <td>App metadata, app registration updates, bundle-id lookup, and guarded deletion</td>
+      <td>list · get · create · update · delete · resolve · public-keys · storekit-config</td>
+      <td>App metadata, public SDK keys, StoreKit config, bundle-id lookup, and guarded deletion</td>
     </tr>
     <tr>
       <td><code>entitlements</code></td>
