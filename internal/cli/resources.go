@@ -25,10 +25,12 @@ type resourceDefinition struct {
 	GetPath           func(projectID, id string, scope pathScope) string
 	CreatePath        func(projectID string, scope pathScope) string
 	UpdatePath        func(projectID, id string, scope pathScope) string
+	DeletePath        func(projectID, id string, scope pathScope) string
 	ArchivePath       func(projectID, id string, scope pathScope) string
 	UnarchivePath     func(projectID, id string, scope pathScope) string
 	AttachProducts    func(projectID, id string, scope pathScope) string
 	DetachProducts    func(projectID, id string, scope pathScope) string
+	SupportsDelete    bool
 	SupportsArchive   bool
 	SupportsAttach    bool
 	NeedsOffering     bool
@@ -55,6 +57,10 @@ func addResourceCommands(root *cobra.Command, app *App) {
 		UpdatePath: func(projectID, id string, _ pathScope) string {
 			return fmt.Sprintf("projects/%s/apps/%s", projectID, id)
 		},
+		DeletePath: func(projectID, id string, _ pathScope) string {
+			return fmt.Sprintf("projects/%s/apps/%s", projectID, id)
+		},
+		SupportsDelete: true,
 	})
 	appsCmd.AddCommand(newAppsResolveCommand(app))
 
@@ -207,6 +213,9 @@ func newStandardResourceCommand(app *App, def resourceDefinition) *cobra.Command
 		cmd.AddCommand(newCreateCommand(app, def), newUpdateCommand(app, def))
 		if def.SupportsArchive {
 			cmd.AddCommand(newArchiveCommand(app, def, true), newArchiveCommand(app, def, false))
+		}
+		if def.SupportsDelete {
+			cmd.AddCommand(newDeleteCommand(app, def))
 		}
 		if def.SupportsAttach {
 			cmd.AddCommand(newAttachDetachCommand(app, def, true), newAttachDetachCommand(app, def, false))
@@ -478,6 +487,40 @@ func newArchiveCommand(app *App, def resourceDefinition, archive bool) *cobra.Co
 			})
 		},
 	}
+	addScopeFlags(cmd, def, &scope)
+	return cmd
+}
+
+func newDeleteCommand(app *App, def resourceDefinition) *cobra.Command {
+	scope := pathScope{}
+	var confirm string
+
+	cmd := &cobra.Command{
+		Use:   fmt.Sprintf("delete <%s_id>", def.Singular),
+		Short: fmt.Sprintf("Delete a %s", def.Singular),
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			if confirm != id {
+				return &CLIError{
+					Code:    exitcode.Usage,
+					Message: fmt.Sprintf("destructive delete requires --confirm %s", id),
+				}
+			}
+			return runMutation(app, fmt.Sprintf("%s deleted", def.Singular), http.MethodDelete, nil, func(ctx config.Context) (string, error) {
+				projectID, err := app.ensureProjectID(ctx)
+				if err != nil {
+					return "", err
+				}
+				pathScope, err := validateScope(def, scope, false)
+				if err != nil {
+					return "", err
+				}
+				return def.DeletePath(projectID, id, pathScope), nil
+			})
+		},
+	}
+	cmd.Flags().StringVar(&confirm, "confirm", "", "Required exact resource ID confirmation for destructive delete")
 	addScopeFlags(cmd, def, &scope)
 	return cmd
 }

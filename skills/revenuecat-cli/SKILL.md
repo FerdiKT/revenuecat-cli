@@ -41,6 +41,7 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 - Use `create`, `update`, `archive`, `unarchive`, `attach-products`, and `detach-products` with `--data` or `--file`.
 - Keep mutations single-context.
 - Prefer reading the latest snapshot immediately before changes.
+- Destructive deletes require exact confirmation, e.g. `revenuecat apps delete app_123 --confirm app_123`.
 - Never print raw API keys in normal output or docs.
 
 ## Auth Guardrail

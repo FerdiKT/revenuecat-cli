@@ -171,8 +171,8 @@ revenuecat offerings create --file ./payloads/offering-create.json
     </tr>
     <tr>
       <td><code>apps</code></td>
-      <td>list · get · create · update · resolve</td>
-      <td>App metadata, app registration updates, and bundle-id lookup</td>
+      <td>list · get · create · update · delete · resolve</td>
+      <td>App metadata, app registration updates, bundle-id lookup, and guarded deletion</td>
     </tr>
     <tr>
       <td><code>entitlements</code></td>
@@ -270,6 +270,14 @@ The stable path uses **project-scoped RevenueCat API keys** organized into named
 - OAuth access and refresh tokens are stored in the OS credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service.
 - The local config file stores context and OAuth metadata only, not API keys or OAuth tokens.
 - On Linux, a Secret Service provider such as GNOME Keyring, KWallet, or KeePassXC Secret Service must be available.
+
+### Destructive Commands
+
+`apps delete <app_id>` is intentionally guarded for agent safety and requires an exact confirmation flag:
+
+```bash
+revenuecat apps delete app_123 --context ios-prod --confirm app_123
+```
 
 ---
 

@@ -34,6 +34,7 @@ This repository contains an agent-first CLI for RevenueCat v2.
 
 - Mutations always target exactly one context.
 - Use `--data '<json>'` or `--file payload.json` for create, update, archive, attach, and detach flows.
+- Destructive deletes require exact confirmation, e.g. `revenuecat apps delete app_123 --confirm app_123`.
 - Do not use `--all-contexts` with mutating commands.
 - Do not combine `--context`, `--all-contexts`, and `--project-id`.
 

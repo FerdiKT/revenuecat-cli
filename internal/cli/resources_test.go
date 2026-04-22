@@ -72,6 +72,94 @@ func TestAppsResolveByBundleID(t *testing.T) {
 	}
 }
 
+func TestAppsDeleteRequiresExactConfirmation(t *testing.T) {
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, "https://example.invalid")
+
+	cmd, _ := newRootCommand()
+	_, _, err := executeCommand(t, cmd, []string{
+		"apps", "delete", "app_1",
+		"--context", "prod",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var cliErr *CLIError
+	if !errorAsCLI(err, &cliErr) {
+		t.Fatalf("err = %T, want *CLIError", err)
+	}
+	if cliErr.Code != 2 {
+		t.Fatalf("cliErr.Code = %d, want 2", cliErr.Code)
+	}
+	if !strings.Contains(cliErr.Message, "destructive delete requires --confirm app_1") {
+		t.Fatalf("message = %q", cliErr.Message)
+	}
+}
+
+func TestAppsDeleteCallsDeleteEndpointWithConfirmation(t *testing.T) {
+	var deleted bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/apps/app_1" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodDelete {
+			t.Fatalf("method = %s, want DELETE", r.Method)
+		}
+		deleted = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, server.URL)
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{
+		"apps", "delete", "app_1",
+		"--context", "prod",
+		"--confirm", "app_1",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !deleted {
+		t.Fatal("expected delete request")
+	}
+	if !strings.Contains(stdout, "app deleted") {
+		t.Fatalf("stdout = %q", stdout)
+	}
+}
+
+func TestAppsDeleteSupportsJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/apps/app_1" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, server.URL)
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{
+		"apps", "delete", "app_1",
+		"--context", "prod",
+		"--confirm", "app_1",
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, `"ok": true`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
 func TestMetricsCountriesOutputsTable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
