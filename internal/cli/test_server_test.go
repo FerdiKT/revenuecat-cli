@@ -23,6 +23,8 @@ func newRevenueCatFixtureServer() *httptest.Server {
 			_ = json.NewEncoder(w).Encode(listResponse([]map[string]any{{"id": "prod_1", "store_identifier": "monthly"}}))
 		case "/v2/projects/proj_123/offerings":
 			_ = json.NewEncoder(w).Encode(listResponse([]map[string]any{{"id": "off_1", "lookup_key": "default"}}))
+		case "/v2/projects/proj_123/paywalls":
+			_ = json.NewEncoder(w).Encode(listResponse([]map[string]any{{"id": "paywall_1", "display_name": "Main Paywall"}}))
 		case "/v2/projects/proj_123/offerings/off_1/packages":
 			_ = json.NewEncoder(w).Encode(listResponse([]map[string]any{{"id": "pkg_1", "lookup_key": "$rc_monthly"}}))
 		case "/v2/projects/proj_123/metrics/overview":

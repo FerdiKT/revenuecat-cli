@@ -355,6 +355,11 @@ func TestPullBundleBuildsAggregatedSnapshot(t *testing.T) {
 	if _, ok := bundle["charts"].(map[string]any)["trials"]; !ok {
 		t.Fatalf("expected trials chart in bundle: %#v", bundle["charts"])
 	}
+	paywalls := bundle["paywalls"].([]any)
+	firstPaywall := paywalls[0].(map[string]any)
+	if firstPaywall["id"] != "paywall_1" || firstPaywall["context_alias"] != "prod" {
+		t.Fatalf("unexpected paywall annotation: %#v", firstPaywall)
+	}
 	if _, ok := bundle["subscriptions"].(map[string]any)["cust_1"]; !ok {
 		t.Fatalf("expected subscriptions keyed by customer: %#v", bundle["subscriptions"])
 	}

@@ -166,6 +166,21 @@ func addResourceCommands(root *cobra.Command, app *App) {
 			SupportsAttach: true,
 		}),
 		newStandardResourceCommand(app, resourceDefinition{
+			Plural:   "paywalls",
+			Singular: "paywall",
+			ListPath: func(projectID string, _ pathScope) string { return fmt.Sprintf("projects/%s/paywalls", projectID) },
+			GetPath: func(projectID, id string, _ pathScope) string {
+				return fmt.Sprintf("projects/%s/paywalls/%s", projectID, id)
+			},
+			CreatePath: func(projectID string, _ pathScope) string {
+				return fmt.Sprintf("projects/%s/paywalls", projectID)
+			},
+			DeletePath: func(projectID, id string, _ pathScope) string {
+				return fmt.Sprintf("projects/%s/paywalls/%s", projectID, id)
+			},
+			SupportsDelete: true,
+		}),
+		newStandardResourceCommand(app, resourceDefinition{
 			Plural:   "customers",
 			Singular: "customer",
 			ReadOnly: true,
@@ -214,7 +229,12 @@ func newStandardResourceCommand(app *App, def resourceDefinition) *cobra.Command
 		newGetCommand(app, def),
 	)
 	if !def.ReadOnly {
-		cmd.AddCommand(newCreateCommand(app, def), newUpdateCommand(app, def))
+		if def.CreatePath != nil {
+			cmd.AddCommand(newCreateCommand(app, def))
+		}
+		if def.UpdatePath != nil {
+			cmd.AddCommand(newUpdateCommand(app, def))
+		}
 		if def.SupportsArchive {
 			cmd.AddCommand(newArchiveCommand(app, def, true), newArchiveCommand(app, def, false))
 		}
@@ -1191,8 +1211,12 @@ func (a *App) pullBundle(ctx config.Context, includeCharts []string, includeCust
 	if err != nil {
 		return nil, nil, err
 	}
+	paywalls, reqW, err := fetchAllListItems(context.Background(), client, fmt.Sprintf("projects/%s/paywalls", projectID), baseQuery)
+	if err != nil {
+		return nil, nil, err
+	}
 	packagesByOffering := map[string]any{}
-	requestIDs := append(append(append(append(reqA, reqE...), reqP...), reqO...))
+	requestIDs := append(append(append(append(append(reqA, reqE...), reqP...), reqO...), reqW...))
 	for _, offering := range offerings {
 		object, ok := offering.(map[string]any)
 		if !ok {
@@ -1240,6 +1264,7 @@ func (a *App) pullBundle(ctx config.Context, includeCharts []string, includeCust
 		"entitlements": annotateItems(ctx, projectID, entitlements),
 		"products":     annotateItems(ctx, projectID, products),
 		"offerings":    annotateItems(ctx, projectID, offerings),
+		"paywalls":     annotateItems(ctx, projectID, paywalls),
 		"packages":     packagesByOffering,
 		"overview":     overview.Payload,
 	}

@@ -38,7 +38,7 @@
 | 🤖 **Agent-first output** | Deterministic JSON envelopes for LLMs, scripts, and CI |
 | 📦 **Project snapshots** | `pull project` and `pull all` for fast planning and comparison |
 | 📊 **Metrics built in** | Overview and chart endpoints without hand-rolled curl calls |
-| 🛠️ **Precise CRUD** | Apps, entitlements, products, offerings, packages, customers, subscriptions, purchases |
+| 🛠️ **Precise CRUD** | Apps, entitlements, products, offerings, packages, paywalls, customers, subscriptions, purchases |
 
 ---
 
@@ -195,6 +195,11 @@ revenuecat offerings create --file ./payloads/offering-create.json
       <td>Offering package management</td>
     </tr>
     <tr>
+      <td><code>paywalls</code></td>
+      <td>list · get · create · delete</td>
+      <td>Paywall configuration with guarded deletion</td>
+    </tr>
+    <tr>
       <td><code>metrics</code></td>
       <td>overview · chart · countries · options</td>
       <td>Overview KPIs, raw chart reads, and country breakdown tables</td>
@@ -226,7 +231,7 @@ Use this pattern for Codex, Claude, Cursor, or internal agents:
 1. Resolve the target context with `revenuecat contexts list` or `--context`.
 2. Pull current state first with `revenuecat pull project` or `revenuecat pull all`.
 3. Plan mutations from the snapshot instead of guessing.
-4. Use resource-specific `create`, `update`, `archive`, or attach/detach commands with JSON payloads.
+4. Use resource-specific `create`, `update`, `archive`, attach/detach, or guarded delete commands with JSON payloads.
 5. Keep `--all-contexts` read-only.
 
 Repo-local guidance also lives in [`AGENTS.md`](AGENTS.md) and [`skills/revenuecat-cli/SKILL.md`](skills/revenuecat-cli/SKILL.md).
@@ -273,10 +278,11 @@ The stable path uses **project-scoped RevenueCat API keys** organized into named
 
 ### Destructive Commands
 
-`apps delete <app_id>` is intentionally guarded for agent safety and requires an exact confirmation flag:
+`apps delete <app_id>` and `paywalls delete <paywall_id>` are intentionally guarded for agent safety and require an exact confirmation flag:
 
 ```bash
 revenuecat apps delete app_123 --context ios-prod --confirm app_123
+revenuecat paywalls delete paywall_123 --context ios-prod --confirm paywall_123
 ```
 
 ---

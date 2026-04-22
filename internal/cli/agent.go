@@ -15,7 +15,7 @@ const (
 	bundledSkillName = "revenuecat-cli"
 	bundledSkillDoc  = `---
 name: revenuecat-cli
-description: Use this skill when working with the local ` + "`revenuecat`" + ` CLI for RevenueCat v2 project operations, multi-context API key workflows, project snapshots, metrics pulls, or agent-safe mutations across apps, entitlements, products, offerings, packages, customers, subscriptions, and purchases.
+description: Use this skill when working with the local ` + "`revenuecat`" + ` CLI for RevenueCat v2 project operations, multi-context API key workflows, project snapshots, metrics pulls, or agent-safe mutations across apps, entitlements, products, offerings, packages, paywalls, customers, subscriptions, and purchases.
 ---
 
 # RevenueCat CLI
@@ -48,6 +48,7 @@ If a context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts
 - Use ` + "`revenuecat <resource> list`" + ` or ` + "`get`" + ` for narrower reads.
 - Use ` + "`revenuecat apps public-keys <app_id>`" + ` to inspect app public SDK keys.
 - Use ` + "`revenuecat apps storekit-config <app_id>`" + ` to inspect iOS StoreKit configuration.
+- Use ` + "`revenuecat paywalls list|get|create|delete`" + ` for paywall configuration.
 - Use ` + "`revenuecat metrics overview`" + ` or ` + "`revenuecat metrics chart <name>`" + ` for KPI and chart data.
 
 ## Mutation Pattern
@@ -55,7 +56,7 @@ If a context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts
 - Use ` + "`create`" + `, ` + "`update`" + `, ` + "`archive`" + `, ` + "`unarchive`" + `, ` + "`attach-products`" + `, and ` + "`detach-products`" + ` with ` + "`--data`" + ` or ` + "`--file`" + `.
 - Keep mutations single-context.
 - Prefer reading the latest snapshot immediately before changes.
-- Destructive deletes require exact confirmation, e.g. ` + "`revenuecat apps delete app_123 --confirm app_123`" + `.
+- Destructive deletes require exact confirmation, e.g. ` + "`revenuecat apps delete app_123 --confirm app_123`" + ` or ` + "`revenuecat paywalls delete paywall_123 --confirm paywall_123`" + `.
 - Never print raw API keys or OAuth tokens in normal output or docs.
 
 ## Auth Guardrail

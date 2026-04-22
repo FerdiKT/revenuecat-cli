@@ -1,6 +1,6 @@
 ---
 name: revenuecat-cli
-description: Use this skill when working with the local `revenuecat` CLI for RevenueCat v2 project operations, multi-context API key workflows, project snapshots, metrics pulls, or agent-safe mutations across apps, entitlements, products, offerings, packages, customers, subscriptions, and purchases.
+description: Use this skill when working with the local `revenuecat` CLI for RevenueCat v2 project operations, multi-context API key workflows, project snapshots, metrics pulls, or agent-safe mutations across apps, entitlements, products, offerings, packages, paywalls, customers, subscriptions, and purchases.
 ---
 
 # RevenueCat CLI
@@ -34,6 +34,7 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 - Use `revenuecat apps resolve --bundle-id ...` when you need an app id for metrics filters.
 - Use `revenuecat apps public-keys <app_id>` to inspect app public SDK keys.
 - Use `revenuecat apps storekit-config <app_id>` to inspect iOS StoreKit configuration.
+- Use `revenuecat paywalls list|get|create|delete` for paywall configuration.
 - Use `revenuecat metrics countries <name>` for country breakdown tables.
 - Use `revenuecat metrics chart <name>` for raw chart payloads, and prefer `--filters-json` / `--selectors-json` for complex queries.
 - Use `revenuecat metrics overview` for quick KPI reads.
@@ -43,7 +44,7 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 - Use `create`, `update`, `archive`, `unarchive`, `attach-products`, and `detach-products` with `--data` or `--file`.
 - Keep mutations single-context.
 - Prefer reading the latest snapshot immediately before changes.
-- Destructive deletes require exact confirmation, e.g. `revenuecat apps delete app_123 --confirm app_123`.
+- Destructive deletes require exact confirmation, e.g. `revenuecat apps delete app_123 --confirm app_123` or `revenuecat paywalls delete paywall_123 --confirm paywall_123`.
 - Never print raw API keys in normal output or docs.
 
 ## Auth Guardrail

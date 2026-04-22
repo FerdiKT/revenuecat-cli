@@ -228,6 +228,144 @@ func TestAppsStoreKitConfig(t *testing.T) {
 	}
 }
 
+func TestPaywallsList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/paywalls" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "list",
+			"items": []any{
+				map[string]any{
+					"id":           "paywall_1",
+					"display_name": "Main Paywall",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, server.URL)
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{
+		"paywalls", "list",
+		"--context", "prod",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, `"id": "paywall_1"`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
+func TestPaywallsCreate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/paywalls" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode: %v", err)
+		}
+		if body["display_name"] != "Main Paywall" {
+			t.Fatalf("body = %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":           "paywall_1",
+			"display_name": "Main Paywall",
+		})
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, server.URL)
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{
+		"paywalls", "create",
+		"--context", "prod",
+		"--data", `{"display_name":"Main Paywall"}`,
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, `"id": "paywall_1"`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
+func TestPaywallsDeleteRequiresExactConfirmation(t *testing.T) {
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, "https://example.invalid")
+
+	cmd, _ := newRootCommand()
+	_, _, err := executeCommand(t, cmd, []string{
+		"paywalls", "delete", "paywall_1",
+		"--context", "prod",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var cliErr *CLIError
+	if !errorAsCLI(err, &cliErr) {
+		t.Fatalf("err = %T, want *CLIError", err)
+	}
+	if cliErr.Code != 2 {
+		t.Fatalf("cliErr.Code = %d, want 2", cliErr.Code)
+	}
+	if !strings.Contains(cliErr.Message, "destructive delete requires --confirm paywall_1") {
+		t.Fatalf("message = %q", cliErr.Message)
+	}
+}
+
+func TestPaywallsDeleteCallsDeleteEndpointWithConfirmation(t *testing.T) {
+	var deleted bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/paywalls/paywall_1" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodDelete {
+			t.Fatalf("method = %s, want DELETE", r.Method)
+		}
+		deleted = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	writeTestConfig(t, tempConfig, server.URL)
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{
+		"paywalls", "delete", "paywall_1",
+		"--context", "prod",
+		"--confirm", "paywall_1",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !deleted {
+		t.Fatal("expected delete request")
+	}
+	if !strings.Contains(stdout, "paywall deleted") {
+		t.Fatalf("stdout = %q", stdout)
+	}
+}
+
 func TestMetricsCountriesOutputsTable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

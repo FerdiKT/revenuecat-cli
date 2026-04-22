@@ -28,6 +28,7 @@ This repository contains an agent-first CLI for RevenueCat v2.
 - Resolve app ids with `revenuecat apps resolve --bundle-id ...` before app-scoped metrics queries.
 - Inspect app public SDK keys with `revenuecat apps public-keys <app_id>`.
 - Inspect iOS StoreKit config with `revenuecat apps storekit-config <app_id>`.
+- Inspect and manage paywalls with `revenuecat paywalls list|get|create|delete`.
 - For country tables: `revenuecat metrics countries <chart_name> --app <app_id> ...`
 - For raw chart payloads: `revenuecat metrics chart <chart_name> --filters-json ... --selectors-json ...`
 - For quick KPI reads: `revenuecat metrics overview|options`
@@ -35,8 +36,8 @@ This repository contains an agent-first CLI for RevenueCat v2.
 ## Mutation Rules
 
 - Mutations always target exactly one context.
-- Use `--data '<json>'` or `--file payload.json` for create, update, archive, attach, and detach flows.
-- Destructive deletes require exact confirmation, e.g. `revenuecat apps delete app_123 --confirm app_123`.
+- Use `--data '<json>'` or `--file payload.json` for create, update, archive, attach, detach, and paywall create flows.
+- Destructive deletes require exact confirmation, e.g. `revenuecat apps delete app_123 --confirm app_123` or `revenuecat paywalls delete paywall_123 --confirm paywall_123`.
 - Do not use `--all-contexts` with mutating commands.
 - Do not combine `--context`, `--all-contexts`, and `--project-id`.
 
