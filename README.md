@@ -108,6 +108,7 @@ revenuecat contexts add ios-prod \
 ```bash
 revenuecat contexts list --format table
 revenuecat auth status
+revenuecat projects list
 ```
 
 ### 3️⃣ Pull the current project snapshot
@@ -259,10 +260,12 @@ The stable path uses **project-scoped RevenueCat API keys** organized into named
 
 - Active context is the default target.
 - `--context <alias>` overrides the active context.
+- `--project-id <project_id>` uses OAuth for project-scoped commands without selecting an API-key context.
 - `--all-contexts` fans out read-only commands across every configured project.
 - API keys are stored in the OS credential store; legacy config files with inline `api_key` values are migrated on first load.
 - `revenuecat auth login` uses the shared public OAuth client with PKCE.
 - `revenuecat projects list` and `revenuecat projects get <project_id>` use OAuth for account-level project discovery.
+- Project-scoped commands can use OAuth by passing `--project-id <project_id>`.
 - Expired OAuth access tokens are refreshed automatically when a refresh token is available.
 - OAuth access and refresh tokens are stored in the OS credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service.
 - The local config file stores context and OAuth metadata only, not API keys or OAuth tokens.

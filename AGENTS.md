@@ -14,13 +14,15 @@ This repository contains an agent-first CLI for RevenueCat v2.
 ## Context Workflow
 
 1. Add or inspect contexts with `revenuecat contexts ...`.
-2. Use `revenuecat contexts use <alias>` or `--context <alias>` to lock the target project.
-3. If a context is missing `project_id`, run `revenuecat contexts verify <alias>` or update the context manually.
+2. Use `revenuecat contexts use <alias>` or `--context <alias>` to lock the target API-key project.
+3. After OAuth login, use `--project-id <project_id>` for project-scoped commands without changing contexts.
+4. If a context is missing `project_id`, run `revenuecat contexts verify <alias>` or update the context manually.
 
 ## Read Before Write
 
 - For project discovery inside a known context: `revenuecat pull project`
 - For account-level project discovery after OAuth login: `revenuecat projects list`
+- For OAuth project-scoped reads: `revenuecat <resource> list --project-id <project_id>`
 - For estate-wide comparison: `revenuecat pull all`
 - For focused reads: `revenuecat <resource> list|get`
 - Resolve app ids with `revenuecat apps resolve --bundle-id ...` before app-scoped metrics queries.
@@ -33,6 +35,7 @@ This repository contains an agent-first CLI for RevenueCat v2.
 - Mutations always target exactly one context.
 - Use `--data '<json>'` or `--file payload.json` for create, update, archive, attach, and detach flows.
 - Do not use `--all-contexts` with mutating commands.
+- Do not combine `--context`, `--all-contexts`, and `--project-id`.
 
 ## Auth
 

@@ -18,6 +18,7 @@ type App struct {
 
 type GlobalFlags struct {
 	ContextAlias string
+	ProjectID    string
 	AllContexts  bool
 	JSON         bool
 	Format       string
@@ -59,6 +60,7 @@ func newRootCommand() (*cobra.Command, *App) {
 
 	flags := cmd.PersistentFlags()
 	flags.StringVar(&app.globalFlags.ContextAlias, "context", "", "Override the active context alias")
+	flags.StringVar(&app.globalFlags.ProjectID, "project-id", "", "Use OAuth for a specific project ID instead of an API-key context")
 	flags.BoolVar(&app.globalFlags.AllContexts, "all-contexts", false, "Fan out read-only commands across all contexts")
 	flags.BoolVar(&app.globalFlags.JSON, "json", false, "Force JSON output")
 	flags.StringVar(&app.globalFlags.Format, "format", "", "Output format for read commands (json|table)")

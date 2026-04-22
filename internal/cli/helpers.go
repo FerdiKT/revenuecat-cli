@@ -72,6 +72,22 @@ func (a *App) resolveSingleContext(cfg *config.Config) (*config.Context, error) 
 	if a.globalFlags.AllContexts {
 		return nil, &CLIError{Code: exitcode.Usage, Message: "--all-contexts is only valid for read commands"}
 	}
+	projectID := strings.TrimSpace(a.globalFlags.ProjectID)
+	if projectID != "" {
+		if strings.TrimSpace(a.globalFlags.ContextAlias) != "" {
+			return nil, &CLIError{Code: exitcode.Usage, Message: "use only one of --context or --project-id"}
+		}
+		token, err := a.freshOAuthToken(context.Background(), cfg)
+		if err != nil {
+			return nil, err
+		}
+		return &config.Context{
+			Alias:      "oauth",
+			APIKey:     token.AccessToken,
+			ProjectID:  projectID,
+			APIBaseURL: chooseNonEmpty(cfg.OAuth.APIBaseURL, config.DefaultAPIBaseURL),
+		}, nil
+	}
 
 	alias := strings.TrimSpace(a.globalFlags.ContextAlias)
 	if alias == "" {
@@ -93,6 +109,9 @@ func (a *App) resolveSingleContext(cfg *config.Config) (*config.Context, error) 
 
 func (a *App) resolveReadContexts(cfg *config.Config) ([]config.Context, error) {
 	if a.globalFlags.AllContexts {
+		if strings.TrimSpace(a.globalFlags.ProjectID) != "" {
+			return nil, &CLIError{Code: exitcode.Usage, Message: "use only one of --all-contexts or --project-id"}
+		}
 		if len(cfg.Contexts) == 0 {
 			return nil, &CLIError{Code: exitcode.Context, Message: "no contexts configured"}
 		}

@@ -272,6 +272,60 @@ func TestProjectsListRefreshesOAuthToken(t *testing.T) {
 	}
 }
 
+func TestResourceCommandSupportsOAuthProjectID(t *testing.T) {
+	keyring.MockInit()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects/proj_123/apps" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer atk_valid" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "list",
+			"items": []any{
+				map[string]any{"id": "app_1", "name": "Headsup"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	tempConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempConfig)
+	store, err := config.NewStore(filepath.Join(tempConfig, "revenuecat", "config.json"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(&config.Config{
+		OAuth: config.OAuth{
+			ClientID:   "client_test",
+			APIBaseURL: server.URL + "/v2",
+			TokenStore: credentials.StoreName,
+		},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := credentials.SaveOAuth(credentials.OAuthToken{
+		AccessToken:  "atk_valid",
+		RefreshToken: "rtk_valid",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		Scopes:       []string{"project_configuration:apps:read"},
+	}); err != nil {
+		t.Fatalf("SaveOAuth: %v", err)
+	}
+
+	cmd, _ := newRootCommand()
+	stdout, _, err := executeCommand(t, cmd, []string{"apps", "list", "--project-id", "proj_123"})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, `"id": "app_1"`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
 func TestPullBundleBuildsAggregatedSnapshot(t *testing.T) {
 	server := newRevenueCatFixtureServer()
 	defer server.Close()

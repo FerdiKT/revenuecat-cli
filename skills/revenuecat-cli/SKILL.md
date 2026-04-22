@@ -19,6 +19,7 @@ Use this skill for repository-local RevenueCat CLI work.
 - Inspect contexts with `revenuecat contexts list` or `revenuecat contexts show`.
 - Select a default with `revenuecat contexts use <alias>`.
 - Override per call with `--context <alias>`.
+- After OAuth login, use `--project-id <project_id>` for project-scoped commands without changing API-key contexts.
 - Use `--all-contexts` only for read commands.
 
 If a context does not have `project_id`, run `revenuecat contexts verify <alias>`. If discovery fails, update the context manually with the correct project id.
@@ -27,6 +28,7 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 
 - Start with `revenuecat pull project` for a single project snapshot.
 - After OAuth login, use `revenuecat projects list` for account-level project discovery.
+- For OAuth project-scoped reads, pass `--project-id <project_id>` to the resource command.
 - Use `revenuecat pull all` to compare every configured project.
 - Use `revenuecat <resource> list` or `get` for narrower reads.
 - Use `revenuecat apps resolve --bundle-id ...` when you need an app id for metrics filters.
@@ -43,4 +45,4 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 
 ## Auth Guardrail
 
-API key contexts remain the stable path for project-scoped commands. OAuth-backed `projects list|get` is available for account-level project discovery. API keys and OAuth tokens are stored in the OS credential store. Never print raw API keys, OAuth access tokens, or OAuth refresh tokens.
+API key contexts remain the stable path for project-scoped commands. OAuth-backed `projects list|get` is available for account-level project discovery, and `--project-id` lets project-scoped commands use OAuth. API keys and OAuth tokens are stored in the OS credential store. Never print raw API keys, OAuth access tokens, or OAuth refresh tokens.
