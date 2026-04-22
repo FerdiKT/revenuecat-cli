@@ -1,34 +1,99 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FerdiKT/revenuecat-cli/internal/config"
 )
 
-func TestAuthLoginComingSoon(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+type writeCapture chan string
 
-	cmd, _ := newRootCommand()
-	stdout, stderr, err := executeCommand(t, cmd, []string{"auth", "login"})
+func (w writeCapture) Write(data []byte) (int, error) {
+	w <- string(data)
+	return len(data), nil
+}
 
-	if stdout != "" {
-		t.Fatalf("stdout = %q, want empty", stdout)
+func TestRunOAuthLoginUsesPKCEAndStoresTokenResponse(t *testing.T) {
+	var tokenRequest url.Values
+	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth2/token" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		tokenRequest = r.Form
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "atk_test",
+			"refresh_token": "rtk_test",
+			"token_type":    "Bearer",
+			"expires_in":    3600,
+			"scope":         "project_configuration:projects:read",
+		})
+	}))
+	defer oauthServer.Close()
+
+	redirectURI := freeRedirectURI(t)
+	outputs := make(writeCapture, 8)
+	resultCh := make(chan struct {
+		token *oauthTokenResponse
+		err   error
+	}, 1)
+	go func() {
+		token, err := runOAuthLogin(context.Background(), oauthLoginOptions{
+			ClientID:     "client_test",
+			RedirectURI:  redirectURI,
+			Scopes:       []string{"project_configuration:projects:read"},
+			OAuthBaseURL: oauthServer.URL,
+			NoOpen:       true,
+			Timeout:      5 * time.Second,
+			Stdout:       outputs,
+		})
+		resultCh <- struct {
+			token *oauthTokenResponse
+			err   error
+		}{token: token, err: err}
+	}()
+
+	state := stateFromAuthorizeOutput(t, <-outputs)
+	resp, err := http.Get(redirectURI + "?code=code_test&state=" + url.QueryEscape(state))
+	if err != nil {
+		t.Fatalf("callback: %v", err)
 	}
-	var cliErr *CLIError
-	if !errorAsCLI(err, &cliErr) {
-		t.Fatalf("err = %T, want *CLIError", err)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("callback status = %d", resp.StatusCode)
 	}
-	if cliErr.Code != 8 {
-		t.Fatalf("cliErr.Code = %d, want 8", cliErr.Code)
+
+	result := <-resultCh
+	if result.err != nil {
+		t.Fatalf("runOAuthLogin: %v", result.err)
 	}
-	if !strings.Contains(stderr, "coming soon") {
-		t.Fatalf("stderr = %q, want coming soon message", stderr)
+	if result.token.AccessToken != "atk_test" {
+		t.Fatalf("access token = %q", result.token.AccessToken)
+	}
+	if tokenRequest.Get("client_id") != "client_test" {
+		t.Fatalf("client_id = %q", tokenRequest.Get("client_id"))
+	}
+	if tokenRequest.Get("code") != "code_test" {
+		t.Fatalf("code = %q", tokenRequest.Get("code"))
+	}
+	if tokenRequest.Get("code_verifier") == "" {
+		t.Fatal("expected code_verifier")
+	}
+	if tokenRequest.Get("client_secret") != "" {
+		t.Fatal("did not expect client_secret for public client flow")
 	}
 }
 
@@ -145,4 +210,40 @@ func errorAsCLI(err error, target **CLIError) bool {
 	}
 	*target = cliErr
 	return true
+}
+
+func freeRedirectURI(t *testing.T) string {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	addr := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	return "http://" + addr + "/oauth/callback"
+}
+
+func stateFromAuthorizeOutput(t *testing.T, text string) string {
+	t.Helper()
+
+	start := strings.Index(text, "http")
+	if start < 0 {
+		t.Fatalf("authorize output missing URL: %q", text)
+	}
+	rawURL := strings.TrimSpace(text[start:])
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("Parse authorize URL: %v", err)
+	}
+	state := parsed.Query().Get("state")
+	if state == "" {
+		t.Fatalf("authorize URL missing state: %s", rawURL)
+	}
+	if parsed.Query().Get("code_challenge") == "" {
+		t.Fatalf("authorize URL missing code_challenge: %s", rawURL)
+	}
+	return state
 }

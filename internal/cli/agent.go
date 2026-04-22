@@ -50,15 +50,15 @@ If a context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts
 - Use ` + "`create`" + `, ` + "`update`" + `, ` + "`archive`" + `, ` + "`unarchive`" + `, ` + "`attach-products`" + `, and ` + "`detach-products`" + ` with ` + "`--data`" + ` or ` + "`--file`" + `.
 - Keep mutations single-context.
 - Prefer reading the latest snapshot immediately before changes.
-- Never print raw API keys in normal output or docs.
+- Never print raw API keys or OAuth tokens in normal output or docs.
 
 ## Auth Guardrail
 
-V1 is API-key only. ` + "`revenuecat auth login`" + ` is a coming-soon placeholder while waiting on RevenueCat OAuth support setup.
+API key contexts remain the stable path for project-scoped commands. OAuth login is available for account-level workflows and stores tokens in the OS credential store.
 `
 	bundledAgentYAML = `display_name: RevenueCat CLI
 short_description: Work with the local RevenueCat agent-first CLI using context-first, pull-first workflows.
-default_prompt: Use the local revenuecat CLI. Resolve the target context first, prefer JSON output, pull current state before planning mutations, and treat OAuth as coming soon.
+default_prompt: Use the local revenuecat CLI. Resolve the target context first, prefer JSON output, pull current state before planning mutations, and treat API keys and OAuth tokens as secrets.
 `
 )
 

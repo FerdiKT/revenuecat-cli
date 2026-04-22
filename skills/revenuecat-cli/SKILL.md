@@ -42,4 +42,4 @@ If a context does not have `project_id`, run `revenuecat contexts verify <alias>
 
 ## Auth Guardrail
 
-V1 is API-key only. `revenuecat auth login` is a coming-soon placeholder while waiting on RevenueCat OAuth support setup.
+API key contexts remain the stable path for project-scoped commands. OAuth login is available for account-level workflows and stores tokens in the OS credential store. Never print raw API keys, OAuth access tokens, or OAuth refresh tokens.

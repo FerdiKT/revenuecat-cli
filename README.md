@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>An agent-first CLI for RevenueCat</strong><br />
-  Multi-project · JSON-first · CI-friendly · API-key contexts
+  Multi-project · JSON-first · CI-friendly · API-key contexts · OAuth-ready
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 
 ## ⚠️ Status
 
-> **This project is in public beta.** Core API-key context flows, project snapshots, metrics pulls, and resource CRUD are implemented for RevenueCat v2. OAuth is intentionally deferred and exposed as a coming-soon placeholder while waiting on RevenueCat support approval for the OAuth client flow.
+> **This project is in public beta.** Core API-key context flows, project snapshots, metrics pulls, and resource CRUD are implemented for RevenueCat v2. OAuth login is experimental and stores tokens in the operating system credential store.
 
 ---
 
@@ -33,6 +33,7 @@
 | | |
 |---|---|
 | 🧭 **Named contexts** | Keep one local registry for all project-scoped API keys |
+| 🔐 **OAuth login** | Shared public client with PKCE and OS credential-store token storage |
 | 🤖 **Agent-first output** | Deterministic JSON envelopes for LLMs, scripts, and CI |
 | 📦 **Project snapshots** | `pull project` and `pull all` for fast planning and comparison |
 | 📊 **Metrics built in** | Overview and chart endpoints without hand-rolled curl calls |
@@ -159,7 +160,7 @@ revenuecat offerings create --file ./payloads/offering-create.json
     <tr>
       <td><code>auth</code></td>
       <td>status · login · logout</td>
-      <td>V1 API-key mode + OAuth placeholder</td>
+      <td>API-key contexts plus experimental OAuth login/logout</td>
     </tr>
     <tr>
       <td><code>apps</code></td>
@@ -248,12 +249,15 @@ revenuecat agent link-skill --source ./skills/revenuecat-cli
 
 ## 🔐 Auth Model
 
-V1 uses **project-scoped RevenueCat API keys** organized into named contexts.
+The stable path uses **project-scoped RevenueCat API keys** organized into named contexts.
 
 - Active context is the default target.
 - `--context <alias>` overrides the active context.
 - `--all-contexts` fans out read-only commands across every configured project.
-- OAuth is intentionally **coming soon** and currently blocked on RevenueCat support approval for the client setup.
+- `revenuecat auth login` uses the shared public OAuth client with PKCE.
+- OAuth access and refresh tokens are stored in the OS credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service.
+- The local config file stores OAuth metadata only, not OAuth tokens.
+- On Linux, a Secret Service provider such as GNOME Keyring, KWallet, or KeePassXC Secret Service must be available.
 
 ---
 

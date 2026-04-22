@@ -29,6 +29,14 @@ type Config struct {
 	ActiveContext string    `json:"active_context,omitempty"`
 	OutputFormat  string    `json:"output_format,omitempty"`
 	Contexts      []Context `json:"contexts,omitempty"`
+	OAuth         OAuth     `json:"oauth,omitempty"`
+}
+
+type OAuth struct {
+	ClientID    string   `json:"client_id,omitempty"`
+	RedirectURI string   `json:"redirect_uri,omitempty"`
+	Scopes      []string `json:"scopes,omitempty"`
+	TokenStore  string   `json:"token_store,omitempty"`
 }
 
 type Store struct {
