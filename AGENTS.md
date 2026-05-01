@@ -5,7 +5,7 @@ This repository contains an agent-first CLI for RevenueCat v2.
 ## Working Model
 
 - Prefer JSON output.
-- Resolve the correct context before any API call.
+- Resolve the correct project before any API call.
 - Prefer `pull project` or `pull all` before planning mutations.
 - Use resource commands for exact CRUD operations.
 - Treat API keys and OAuth tokens as secrets. Never echo raw `sk_`, `atk_`, or `rtk_` values in normal output.
@@ -14,17 +14,17 @@ This repository contains an agent-first CLI for RevenueCat v2.
 ## Context Workflow
 
 1. Add or inspect contexts with `revenuecat contexts ...`.
-2. Use `revenuecat contexts use <alias>` or `--context <alias>` to lock the target API-key project.
-3. After OAuth login, use `--project-id <project_id>` for project-scoped commands without changing contexts.
-4. If a context is missing `project_id`, run `revenuecat contexts verify <alias>` or update the context manually.
+2. After OAuth login, prefer `--project-id <project_id>` for project-scoped commands.
+3. Use `revenuecat contexts use <alias>` or `--context <alias>` when you want a fixed API-key alias.
+4. If an API-key context is missing `project_id`, run `revenuecat contexts verify <alias>` or update the context manually.
 
 ## Read Before Write
 
-- For project discovery inside a known context: `revenuecat pull project`
 - For account-level project discovery after OAuth login: `revenuecat projects list`
 - For account-level project creation after OAuth login: `revenuecat projects create --name "..."`
+- For project-scoped reads after OAuth login: `revenuecat pull project --project-id <project_id>`
 - For OAuth project-scoped reads: `revenuecat <resource> list --project-id <project_id>`
-- For estate-wide comparison: `revenuecat pull all`
+- For estate-wide comparison across configured API-key contexts: `revenuecat pull all`
 - For focused reads: `revenuecat <resource> list|get`
 - Resolve app ids with `revenuecat apps resolve --bundle-id ...` before app-scoped metrics queries.
 - Inspect app public SDK keys with `revenuecat apps public-keys <app_id>`.
@@ -36,7 +36,7 @@ This repository contains an agent-first CLI for RevenueCat v2.
 
 ## Mutation Rules
 
-- Mutations always target exactly one context.
+- Mutations always target exactly one project.
 - Use `--data '<json>'` or `--file payload.json` for create, update, archive, attach, detach, and paywall create flows.
 - Destructive deletes require exact confirmation, e.g. `revenuecat apps delete app_123 --confirm app_123` or `revenuecat paywalls delete paywall_123 --confirm paywall_123`.
 - Do not use `--all-contexts` with mutating commands.
@@ -44,6 +44,6 @@ This repository contains an agent-first CLI for RevenueCat v2.
 
 ## Auth
 
-- API key contexts remain the stable path for project-scoped commands.
-- OAuth login is available for account-level workflows and stores tokens in the OS credential store.
+- OAuth login is the preferred path for account-level and project-scoped workflows.
+- API-key contexts remain useful for named aliases and `pull all`.
 - Do not read, print, or copy API keys, OAuth access tokens, or OAuth refresh tokens from the OS credential store.

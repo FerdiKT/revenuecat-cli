@@ -15,7 +15,7 @@ const (
 	bundledSkillName = "revenuecat-cli"
 	bundledSkillDoc  = `---
 name: revenuecat-cli
-description: Use this skill when working with the local ` + "`revenuecat`" + ` CLI for RevenueCat v2 project operations, multi-context API key workflows, project snapshots, metrics pulls, or agent-safe mutations across apps, entitlements, products, offerings, packages, paywalls, customers, subscriptions, and purchases.
+description: Use this skill when working with the local ` + "`revenuecat`" + ` CLI for RevenueCat v2 OAuth-first project operations, optional multi-context API key workflows, project snapshots, metrics pulls, or agent-safe mutations across apps, entitlements, products, offerings, packages, paywalls, customers, subscriptions, and purchases.
 ---
 
 # RevenueCat CLI
@@ -24,26 +24,26 @@ Use this skill for repository-local RevenueCat CLI work.
 
 ## Workflow
 
-1. Resolve context first.
+1. Resolve the target project first.
 2. Pull current state before planning mutations.
 3. Prefer JSON output for agent workflows.
 4. Use precise resource commands for changes.
 
 ## Context Resolution
 
-- Inspect contexts with ` + "`revenuecat contexts list`" + ` or ` + "`revenuecat contexts show`" + `.
+- After OAuth login, use ` + "`--project-id <project_id>`" + ` for project-scoped commands.
+- Inspect contexts with ` + "`revenuecat contexts list`" + ` or ` + "`revenuecat contexts show`" + ` when you need fixed API-key aliases.
 - Select a default with ` + "`revenuecat contexts use <alias>`" + `.
-- Override per call with ` + "`--context <alias>`" + `.
-- After OAuth login, use ` + "`--project-id <project_id>`" + ` for project-scoped commands without changing API-key contexts.
+- Override a context per call with ` + "`--context <alias>`" + `.
 - Use ` + "`--all-contexts`" + ` only for read commands.
 
-If a context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts verify <alias>`" + `. If discovery fails, update the context manually with the correct project id.
+If an API-key context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts verify <alias>`" + `. If discovery fails, update the context manually with the correct project id.
 
 ## Read Pattern
 
-- Start with ` + "`revenuecat pull project`" + ` for a single project snapshot.
 - After OAuth login, use ` + "`revenuecat projects list`" + ` for account-level project discovery.
 - After OAuth login, use ` + "`revenuecat projects create --name \"...\"`" + ` for account-level project creation.
+- Start with ` + "`revenuecat pull project --project-id <project_id>`" + ` for a single project snapshot.
 - For OAuth project-scoped reads, pass ` + "`--project-id <project_id>`" + ` to the resource command.
 - Use ` + "`revenuecat pull all`" + ` to compare every configured project.
 - Use ` + "`revenuecat <resource> list`" + ` or ` + "`get`" + ` for narrower reads.
@@ -55,18 +55,18 @@ If a context does not have ` + "`project_id`" + `, run ` + "`revenuecat contexts
 ## Mutation Pattern
 
 - Use ` + "`create`" + `, ` + "`update`" + `, ` + "`archive`" + `, ` + "`unarchive`" + `, ` + "`attach-products`" + `, and ` + "`detach-products`" + ` with ` + "`--data`" + ` or ` + "`--file`" + `.
-- Keep mutations single-context.
+- Keep mutations single-project.
 - Prefer reading the latest snapshot immediately before changes.
 - Destructive deletes require exact confirmation, e.g. ` + "`revenuecat apps delete app_123 --confirm app_123`" + ` or ` + "`revenuecat paywalls delete paywall_123 --confirm paywall_123`" + `.
 - Never print raw API keys or OAuth tokens in normal output or docs.
 
 ## Auth Guardrail
 
-API key contexts remain the stable path for project-scoped commands. OAuth-backed ` + "`projects list|get`" + ` is available for account-level project discovery, and ` + "`--project-id`" + ` lets project-scoped commands use OAuth. API keys and OAuth tokens are stored in the OS credential store.
+OAuth is the preferred path for account-level and project-scoped commands. API-key contexts remain useful for named aliases and ` + "`pull all`" + `. API keys and OAuth tokens are stored in the OS credential store.
 `
 	bundledAgentYAML = `display_name: RevenueCat CLI
 short_description: Work with the local RevenueCat agent-first CLI using context-first, pull-first workflows.
-default_prompt: Use the local revenuecat CLI. Resolve the target context first, prefer JSON output, pull current state before planning mutations, and treat API keys and OAuth tokens as secrets.
+default_prompt: Use the local revenuecat CLI. Resolve the target project first, prefer JSON output, pull current state before planning mutations, and treat API keys and OAuth tokens as secrets.
 `
 )
 

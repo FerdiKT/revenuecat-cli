@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>An agent-first CLI for RevenueCat</strong><br />
-  Multi-project · JSON-first · CI-friendly · API-key contexts · OAuth-ready
+  Multi-project · JSON-first · CI-friendly · OAuth-first
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
   <a href="#-installation"><img src="https://img.shields.io/badge/homebrew-ready-8A6B3F?style=flat-square&logo=homebrew&logoColor=white" alt="Homebrew" /></a>
   <a href="#-quickstart"><img src="https://img.shields.io/badge/quickstart-5_min-brightgreen?style=flat-square" alt="Quickstart" /></a>
   <a href="#-why-revenuecat"><img src="https://img.shields.io/badge/agent-first-0EA5E9?style=flat-square" alt="Agent First" /></a>
-  <a href="#-auth-model"><img src="https://img.shields.io/badge/auth-api_key_contexts-14B8A6?style=flat-square" alt="API Key Contexts" /></a>
+  <a href="#-auth-model"><img src="https://img.shields.io/badge/auth-oauth_pkce-14B8A6?style=flat-square" alt="OAuth PKCE" /></a>
   <a href="#-license"><img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="License" /></a>
 </p>
 
@@ -22,7 +22,7 @@
 
 ## ⚠️ Status
 
-> **This project is in public beta.** Core API-key context flows, project snapshots, metrics pulls, and resource CRUD are implemented for RevenueCat v2. OAuth login is experimental and stores tokens in the operating system credential store.
+> **This project is in public beta.** OAuth login with PKCE is the recommended path today for RevenueCat account-level and project-scoped workflows. API-key contexts remain supported for named aliases, fixed project bindings, and `pull all`.
 
 ---
 
@@ -32,9 +32,9 @@
 
 | | |
 |---|---|
-| 🧭 **Named contexts** | Keep one local registry for all project-scoped API keys |
+| 🔐 **OAuth login** | Recommended auth path with PKCE and OS credential-store token storage |
+| 🧭 **Named contexts** | Optional API-key aliases for fixed project shortcuts and `pull all` |
 | 🔐 **Secret storage** | API keys and OAuth tokens live in the OS credential store |
-| 🔐 **OAuth login** | Shared public client with PKCE and OS credential-store token storage |
 | 🤖 **Agent-first output** | Deterministic JSON envelopes for LLMs, scripts, and CI |
 | 📦 **Project snapshots** | `pull project` and `pull all` for fast planning and comparison |
 | 📊 **Metrics built in** | Overview and chart endpoints without hand-rolled curl calls |
@@ -69,7 +69,7 @@ go install github.com/FerdiKT/revenuecat-cli/cmd/revenuecat@latest
 ```bash
 git clone https://github.com/FerdiKT/revenuecat-cli.git
 cd revenuecat-cli
-make build VERSION=v0.2.0
+make build VERSION=v0.3.1
 ./bin/revenuecat version
 ```
 
@@ -93,7 +93,38 @@ make install-local PREFIX="$(pwd)/.local-dev" VERSION=local
 
 Get up and running in **5 minutes**.
 
-### 1️⃣ Add your first context
+### 1️⃣ Log in with OAuth
+
+```bash
+revenuecat auth login
+```
+
+### 2️⃣ Discover or create a project
+
+```bash
+revenuecat auth status
+revenuecat projects list
+revenuecat projects create --name "Main iOS App"
+```
+
+### 3️⃣ Pull the current project snapshot
+
+```bash
+revenuecat pull project --project-id proj_123 --chart trials
+```
+
+### 4️⃣ Resolve an app and inspect country metrics
+
+```bash
+revenuecat apps resolve --project-id proj_123 --bundle-id app.ferdi.headson
+revenuecat metrics countries revenue \
+  --project-id proj_123 \
+  --app app_1 \
+  --start 2026-01-01 \
+  --end 2026-04-16
+```
+
+### 5️⃣ Optional: add an API-key context for shortcuts and `pull all`
 
 ```bash
 revenuecat contexts add ios-prod \
@@ -103,42 +134,17 @@ revenuecat contexts add ios-prod \
   --active
 ```
 
-### 2️⃣ Inspect context state
-
-```bash
-revenuecat contexts list --format table
-revenuecat auth status
-revenuecat projects list
-```
-
-### 3️⃣ Pull the current project snapshot
-
-```bash
-revenuecat pull project --chart trials
-```
-
-### 4️⃣ Resolve an app and inspect country metrics
-
-```bash
-revenuecat apps resolve --context ios-prod --bundle-id app.ferdi.headson
-revenuecat metrics countries revenue \
-  --context ios-prod \
-  --app app_1 \
-  --start 2026-01-01 \
-  --end 2026-04-16
-```
-
-### 5️⃣ Compare every configured project
+### 6️⃣ Compare every configured project with contexts
 
 ```bash
 revenuecat pull all --include-customers
 ```
 
-### 6️⃣ Create resources with JSON payloads
+### 7️⃣ Create resources with JSON payloads
 
 ```bash
-revenuecat entitlements create --data '{"lookup_key":"pro","display_name":"Pro Access"}'
-revenuecat offerings create --file ./payloads/offering-create.json
+revenuecat entitlements create --project-id proj_123 --data '{"lookup_key":"pro","display_name":"Pro Access"}'
+revenuecat offerings create --project-id proj_123 --file ./payloads/offering-create.json
 ```
 
 ---
@@ -162,12 +168,12 @@ revenuecat offerings create --file ./payloads/offering-create.json
     <tr>
       <td><code>contexts</code></td>
       <td>add · list · use · show · remove · verify</td>
-      <td>Named API key contexts, active context switching</td>
+      <td>Optional API-key aliases, active context switching, and <code>pull all</code></td>
     </tr>
     <tr>
       <td><code>auth</code></td>
       <td>status · login · logout</td>
-      <td>API-key contexts plus experimental OAuth login/logout</td>
+      <td>OAuth login with PKCE plus status/logout</td>
     </tr>
     <tr>
       <td><code>apps</code></td>
@@ -228,11 +234,11 @@ revenuecat offerings create --file ./payloads/offering-create.json
 
 Use this pattern for Codex, Claude, Cursor, or internal agents:
 
-1. Resolve the target context with `revenuecat contexts list` or `--context`.
+1. Resolve the target project with `revenuecat projects list`, `--project-id`, or `--context`.
 2. Pull current state first with `revenuecat pull project` or `revenuecat pull all`.
 3. Plan mutations from the snapshot instead of guessing.
 4. Use resource-specific `create`, `update`, `archive`, attach/detach, or guarded delete commands with JSON payloads.
-5. Keep `--all-contexts` read-only.
+5. Keep `--all-contexts` read-only and use it only with configured API-key contexts.
 
 Repo-local guidance also lives in [`AGENTS.md`](AGENTS.md) and [`skills/revenuecat-cli/SKILL.md`](skills/revenuecat-cli/SKILL.md).
 
@@ -261,20 +267,19 @@ revenuecat agent link-skill --source ./skills/revenuecat-cli
 
 ## 🔐 Auth Model
 
-The stable path uses **project-scoped RevenueCat API keys** organized into named contexts.
+The recommended path today is **OAuth with PKCE**.
 
-- Active context is the default target.
-- `--context <alias>` overrides the active context.
-- `--project-id <project_id>` uses OAuth for project-scoped commands without selecting an API-key context.
-- `--all-contexts` fans out read-only commands across every configured project.
-- API keys are stored in the OS credential store; legacy config files with inline `api_key` values are migrated on first load.
 - `revenuecat auth login` uses the shared public OAuth client with PKCE.
-- `revenuecat projects list` and `revenuecat projects get <project_id>` use OAuth for account-level project discovery.
-- `revenuecat projects create --name "Project Name"` uses OAuth for account-level project creation.
-- Project-scoped commands can use OAuth by passing `--project-id <project_id>`.
+- `revenuecat projects list`, `revenuecat projects get <project_id>`, and `revenuecat projects create --name "Project Name"` use OAuth for account-level workflows.
+- Project-scoped commands can use OAuth directly by passing `--project-id <project_id>`.
 - Expired OAuth access tokens are refreshed automatically when a refresh token is available.
 - OAuth access and refresh tokens are stored in the OS credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service.
 - The local config file stores context and OAuth metadata only, not API keys or OAuth tokens.
+- API-key contexts remain supported for named aliases, fixed project bindings, and `pull all`.
+- Active context is the default target for API-key workflows.
+- `--context <alias>` overrides the active API-key context.
+- `--all-contexts` fans out read-only commands across every configured API-key context.
+- API keys are stored in the OS credential store; legacy config files with inline `api_key` values are migrated on first load.
 - On Linux, a Secret Service provider such as GNOME Keyring, KWallet, or KeePassXC Secret Service must be available.
 
 ### Destructive Commands
@@ -292,9 +297,9 @@ revenuecat paywalls delete paywall_123 --context ios-prod --confirm paywall_123
 
 ```bash
 make test
-make build VERSION=v0.1.0
+make build VERSION=v0.3.1
 make install-local PREFIX="$(pwd)/.local-dev" VERSION=local
-make dist VERSION=v0.1.0
+make dist VERSION=v0.3.1
 ```
 
 ---
